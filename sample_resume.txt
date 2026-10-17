@@ -1,0 +1,36 @@
+Alex Morgan
+alex.morgan@email.com | +1 (555) 234-5678 | San Francisco, CA
+https://linkedin.com/in/alexmorgan-dev
+https://github.com/alexmorgan-dev
+
+PROFESSIONAL SUMMARY
+Senior Full Stack & Python Software Engineer with 5+ years of experience designing, building, and deploying scalable distributed systems, cloud microservices, and AI-powered applications. Passionate about clean code, high performance, and rapid product iteration in remote-first environments.
+
+TECHNICAL SKILLS
+Languages: Python, JavaScript, TypeScript, SQL, Bash
+Frontend: React, Next.js, HTML, CSS, Tailwind CSS, Redux
+Backend & APIs: FastAPI, Django, Flask, Node.js, Express.js, REST API, GraphQL
+Data & AI: Machine Learning, PyTorch, Pandas, NumPy, Scikit-Learn, LLM, LangChain
+Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD, GitHub Actions, Linux, Terraform, Nginx
+Databases: PostgreSQL, Redis, MongoDB, SQLite, MySQL
+
+WORK EXPERIENCE
+Senior Software Engineer | CloudScale Tech (Remote) | 2022 - Present
+• Designed and developed resilient microservices handling over 50M API requests/day with FastAPI and PostgreSQL.
+• Reduced backend response latency by 42% through query optimization and Redis caching layer implementation.
+• Built full-stack interactive dashboards using React and TypeScript, boosting customer engagement by 28%.
+• Led the migration of legacy monolith to containerized Docker services orchestrated with Kubernetes on AWS.
+• Mentored 4 junior engineers on unit testing, code review standards, and CI/CD automation pipelines.
+
+Full Stack Software Engineer | Horizon Data Labs | 2020 - 2022
+• Developed REST APIs and data processing pipelines utilizing Python, Django, and Celery.
+• Integrated third-party APIs and payment processors with 99.9% uptime.
+• Automated release cycles with GitHub Actions, reducing deployment time from 45 minutes to 8 minutes.
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of California, Berkeley | 2016 - 2020
+
+PROJECTS
+• AI Code Assistant: Open-source developer tool utilizing LLMs and vector search for automated code explanations.
+• Real-Time Stock Analytics Engine: Distributed event-driven dashboard built with Python, WebSockets, and React.

@@ -1,0 +1,40 @@
+﻿# Python environments and generated files
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.qodo/
+.DS_Store
+Thumbs.db
+
+# Runtime data, browser state, logs and temporary files
+browser_profile/
+job_agent.db
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.tmp
+*.bak
+active_resume.txt
+uploads/
+resumes/
+
+# Build output and unrelated binary artifacts
+build/
+dist/
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
