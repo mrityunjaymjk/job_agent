@@ -1016,12 +1016,52 @@ elif page == "🎯 Match & Co-Pilot":
 
         st.divider()
 
+        # ⚡ 1-Click Application Quick-Fill Kit
+        with st.expander("⚡ 1-Click Application Quick-Fill Kit (Tap any box to copy)", expanded=False):
+            st.caption("Essential candidate fields for application portals (Workday, Greenhouse, Lever, Ashby). Tap the copy button on any box to copy instantly!")
+            
+            c_kit1, c_kit2, c_kit3 = st.columns(3)
+            with c_kit1:
+                st.caption("👤 Full Name")
+                st.code(active_resume.get('name', 'Candidate'), language=None)
+                st.caption("📧 Email")
+                st.code(active_resume.get('email', 'applicant@email.com'), language=None)
+                st.caption("📱 Phone")
+                st.code(active_resume.get('phone', '+1 555-0199'), language=None)
+                st.caption("📍 Location")
+                st.code(db.get_setting("user_location", active_resume.get('location', 'Remote / Worldwide')), language=None)
+                
+            with c_kit2:
+                st.caption("🔗 LinkedIn URL")
+                li_url = db.get_setting("linkedin_url", active_resume.get('links', {}).get('linkedin', 'https://linkedin.com/in/'))
+                st.code(li_url, language=None)
+                st.caption("💻 GitHub URL")
+                gh_url = db.get_setting("github_url", active_resume.get('links', {}).get('github', 'https://github.com/'))
+                st.code(gh_url, language=None)
+                st.caption("🌐 Portfolio / Website")
+                pf_url = db.get_setting("portfolio_url", active_resume.get('links', {}).get('portfolio', 'https://portfolio.dev'))
+                st.code(pf_url, language=None)
+                st.caption("⏳ Notice Period")
+                st.code(db.get_setting("notice_period", "Immediate (2 weeks)"), language=None)
+
+            with c_kit3:
+                st.caption("💼 Years of Experience")
+                st.code(db.get_setting("years_exp", "4+ years"), language=None)
+                st.caption("💰 Desired Compensation")
+                st.code(db.get_setting("expected_salary", "$130,000 / yr (Flexible)"), language=None)
+                st.caption("🛂 Work Authorization")
+                st.code(db.get_setting("work_auth", "Authorized to work without sponsorship"), language=None)
+                st.caption("🏷️ Top Skills")
+                st.code(", ".join(active_resume.get('skills', [])[:6]), language=None)
+
         # Co-Pilot Tools Tabs
-        tool_tab1, tool_tab2, tool_tab3, tool_tab4 = st.tabs([
+        tool_tab1, tool_tab2, tool_tab3, tool_tab4, tool_tab5, tool_tab6 = st.tabs([
             "✍️ Tailored Cover Letter", 
             "📝 Optimized Bullet Points", 
             "💬 Recruiter Outreach (LinkedIn/Email)", 
-            "📋 Quick-Fill Form Answers"
+            "📋 Quick-Fill Form Answers",
+            "🎯 Interview Prep Cheat Sheet",
+            "💰 Salary Intelligence Advisor"
         ])
         
         with tool_tab1:
@@ -1165,6 +1205,91 @@ elif page == "🎯 Match & Co-Pilot":
                 with st.expander(f"**{q}**", expanded=True):
                     st.code(a, language=None)
 
+        with tool_tab5:
+            st.markdown("#### 🎯 Role-Specific Interview Preparation Cheat Sheet")
+            st.caption(f"Targeted technical and behavioral talking points for your upcoming interviews with **{target_job['company']}** for the **{target_job['title']}** role.")
+            
+            c_int1, c_int2 = st.columns([2.5, 1])
+            with c_int2:
+                regen_interview = st.button("🔄 Refresh Cheat Sheet", use_container_width=True)
+                
+            interview_cache_key = f"interview_prep_{target_job['id']}_{active_resume.get('name', '')}"
+            if regen_interview or interview_cache_key not in st.session_state:
+                with st.spinner("Analyzing job requirements and drafting tailored STAR talking points..."):
+                    cheat_sheet_data = copilot.generate_interview_cheat_sheet(active_resume, target_job, api_key=gemini_key)
+                    st.session_state[interview_cache_key] = cheat_sheet_data
+            else:
+                cheat_sheet_data = st.session_state[interview_cache_key]
+                
+            st.info(f"💡 **Interviewer Focus:** {cheat_sheet_data.get('role_summary', '')}")
+            
+            st.markdown("##### 1️⃣ High-Probability Interview Questions & Structured STAR Answers:")
+            for idx, q_item in enumerate(cheat_sheet_data.get("questions", []), 1):
+                with st.container(border=True):
+                    st.markdown(f"**Q{idx}: {q_item.get('question', '')}**")
+                    st.caption(f"📌 Focus: {q_item.get('category', 'Technical Competency')}")
+                    
+                    with st.expander("🗣️ View Recommended STAR Talking Points (Situation, Task, Action, Result)", expanded=True):
+                        star = q_item.get("star_framework", {})
+                        if isinstance(star, dict):
+                            st.markdown(f"**• Situation:** {star.get('Situation', '')}")
+                            st.markdown(f"**• Task:** {star.get('Task', '')}")
+                            st.markdown(f"**• Action:** {star.get('Action', '')}")
+                            st.markdown(f"**• Result:** {star.get('Result', '')}")
+                        else:
+                            st.markdown(str(star))
+                            
+                    st.markdown(f'<div style="font-size: 0.82rem; color: #D97706; font-weight: 600;">💡 Pro-Tip: {q_item.get("pro_tip", "")}</div>', unsafe_allow_html=True)
+                    
+            st.markdown("##### 2️⃣ Impressive Questions to Ask the Interviewer:")
+            st.caption("Ask these at the end of your call to demonstrate technical depth, ownership, and seniority:")
+            for r_q in cheat_sheet_data.get("reverse_questions", []):
+                st.code(r_q, language=None)
+
+        with tool_tab6:
+            st.markdown("#### 💰 Salary Intelligence & Compensation Advisor")
+            st.caption(f"Real-time compensation benchmark and application negotiation guidance for **{target_job['title']}** at **{target_job['company']}**.")
+            
+            user_prefs_dict = {
+                "years_exp": db.get_setting("years_exp", "4+ years"),
+                "expected_salary": db.get_setting("expected_salary", "$120,000 / yr"),
+                "work_auth": db.get_setting("work_auth", "Authorized to work"),
+                "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)")
+            }
+            salary_data = copilot.estimate_salary_benchmark(target_job, user_prefs_dict)
+            
+            if salary_data.get("has_posted_salary"):
+                st.success(f"💵 **Employer Stated Compensation:** {salary_data['posted_salary']}")
+            else:
+                st.info(f"ℹ️ Employer did not list a salary in the posting. Showing market intelligence based on **{salary_data['level']}** in **{salary_data['domain']}**.")
+                
+            st.markdown(f"📍 Market Scope: **{salary_data['location_context']}** &nbsp;•&nbsp; Level: **{salary_data['level']}**")
+            
+            p_cols = st.columns(4)
+            pcts = salary_data.get("percentiles", {})
+            with p_cols[0]:
+                st.metric("25th Percentile", pcts.get("p25", "N/A"), help="Entry / Conservative market base")
+            with p_cols[1]:
+                st.metric("Median (Market Rate)", pcts.get("p50_median", "N/A"), help="Typical market compensation")
+            with p_cols[2]:
+                st.metric("75th Percentile", pcts.get("p75", "N/A"), help="Competitive tier for strong candidates")
+            with p_cols[3]:
+                st.metric("90th Percentile", pcts.get("p90_top", "N/A"), help="Top-of-market / Staff / Tech Lead")
+                
+            st.divider()
+            st.markdown("##### 📝 How to Answer Compensation Fields on Application Forms:")
+            guidance = salary_data.get("form_guidance", {})
+            
+            g_col1, g_col2 = st.columns(2)
+            with g_col1:
+                st.caption("If the form has a text box (Preferred):")
+                st.code(guidance.get("text_input", "Competitive / Open to discussion"), language=None)
+            with g_col2:
+                st.caption("If the form requires a strictly numeric field:")
+                st.code(guidance.get("number_input", "125000"), language=None)
+                
+            st.markdown(f'<div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px; margin-top: 10px; font-size: 0.88rem; color: #166534;"><strong>🤝 Recruiter Screening Phone Script:</strong><br>{guidance.get("negotiation_tip", "")}</div>', unsafe_allow_html=True)
+
         st.divider()
         st.subheader("🚀 Mark Application Status")
         col_st1, col_st2, col_st3 = st.columns([1.5, 1.5, 2])
@@ -1205,18 +1330,30 @@ elif page == "📊 Application Tracker":
     m3.metric("🤝 Interviews", interview_count)
     m4.metric("🎉 Offers", offer_count)
     
-    col_t_met, col_t_exp = st.columns([3, 1])
+    col_t_met, col_t_exp = st.columns([2.5, 1.5])
     with col_t_exp:
         if apps:
-            apps_df = pd.DataFrame(apps)
+            export_rows = []
+            for a in apps:
+                export_rows.append({
+                    "Company": a.get("company", ""),
+                    "Job Title": a.get("job_title", ""),
+                    "Status": a.get("status", "Saved"),
+                    "Match Score": f"{a.get('match_score', 0)}%",
+                    "Date Applied": a.get("applied_date", ""),
+                    "Application Link": a.get("apply_url", ""),
+                    "Notes": a.get("notes", ""),
+                    "Last Updated": str(a.get("updated_at", ""))[:19]
+                })
+            apps_df = pd.DataFrame(export_rows)
             csv_data = apps_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                "📥 Export Pipeline CSV",
+                "📥 Export Applications to CSV",
                 data=csv_data,
                 file_name=f"job_applications_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True,
-                help="Export all tracked jobs and application stages to CSV."
+                help="Export all tracked jobs and application stages to a clean CSV."
             )
 
     st.divider()
@@ -1277,6 +1414,35 @@ elif page == "⚙️ Settings":
             st.success("API key saved securely in local database!")
             
         st.caption("Don't have a Gemini key? Get a free key at [Google AI Studio](https://aistudio.google.com/). The Co-Pilot also functions 100% offline using built-in TF-IDF and skill taxonomy!")
+
+    with st.container(border=True):
+        st.subheader("👤 Candidate Profile & Quick-Apply Defaults")
+        st.write("Customize your default links, contact details, and job preferences. These are instantly pre-filled into your **1-Click Application Kit** across all job portals:")
+        
+        c_set1, c_set2 = st.columns(2)
+        with c_set1:
+            cfg_li = st.text_input("LinkedIn Profile URL", value=db.get_setting("linkedin_url", "https://linkedin.com/in/"), key="cfg_li")
+            cfg_gh = st.text_input("GitHub Profile URL", value=db.get_setting("github_url", "https://github.com/"), key="cfg_gh")
+            cfg_pf = st.text_input("Portfolio / Website URL", value=db.get_setting("portfolio_url", "https://"), key="cfg_pf")
+            cfg_loc = st.text_input("Current Location", value=db.get_setting("user_location", "Remote / Worldwide"), key="cfg_loc")
+            
+        with c_set2:
+            cfg_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "4+ years"), key="cfg_exp")
+            cfg_sal = st.text_input("Expected Salary / Rate", value=db.get_setting("expected_salary", "$130,000 / yr (Flexible)"), key="cfg_sal")
+            cfg_auth = st.text_input("Work Authorization", value=db.get_setting("work_auth", "Authorized to work without sponsorship"), key="cfg_auth")
+            cfg_not = st.text_input("Notice Period / Availability", value=db.get_setting("notice_period", "Immediate (2 weeks)"), key="cfg_not")
+            
+        if st.button("Save Profile Defaults", type="primary", key="btn_save_defaults"):
+            db.set_setting("linkedin_url", cfg_li.strip())
+            db.set_setting("github_url", cfg_gh.strip())
+            db.set_setting("portfolio_url", cfg_pf.strip())
+            db.set_setting("user_location", cfg_loc.strip())
+            db.set_setting("years_exp", cfg_exp.strip())
+            db.set_setting("expected_salary", cfg_sal.strip())
+            db.set_setting("work_auth", cfg_auth.strip())
+            db.set_setting("notice_period", cfg_not.strip())
+            st.success("Candidate application defaults saved successfully!")
+            st.rerun()
 
     with st.container(border=True):
         st.subheader("🍪 Browser Sessions & Cache Memory Manager")

@@ -416,3 +416,244 @@ def generate_application_answers(
         "Portfolio / GitHub": resume_data.get('links', {}).get('github', 'https://github.com/'),
         "LinkedIn Profile": resume_data.get('links', {}).get('linkedin', 'https://linkedin.com/in/')
     }
+
+def generate_offline_interview_cheat_sheet(
+    resume_data: Dict[str, Any], 
+    job_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Generates comprehensive, role-tailored interview talking points without requiring external AI."""
+    title = job_data.get('title', 'Software Engineer')
+    company = job_data.get('company', 'the company')
+    skills = _clean_str_list(resume_data.get('skills', []))
+    top_skills = skills[:4] if skills else ['Python', 'System Architecture', 'APIs', 'Databases']
+    primary_tech = top_skills[0] if top_skills else "Software Engineering"
+    secondary_tech = top_skills[1] if len(top_skills) > 1 else "Cloud Architecture"
+    third_tech = top_skills[2] if len(top_skills) > 2 else "Scalable Systems"
+
+    questions = [
+        {
+            "category": "🛠️ Technical Core & Stack Alignment",
+            "question": f"Can you walk us through a complex system or feature you built using {primary_tech} and {secondary_tech}?",
+            "star_framework": {
+                "Situation": f"At my previous role/project, we needed to build and optimize a high-traffic service using {primary_tech}.",
+                "Task": f"My responsibility was to architect modular, reliable components and ensure low latency across our {secondary_tech} workflows.",
+                "Action": f"I designed clean modular abstractions, introduced automated test suites, and optimized database queries to eliminate bottlenecks.",
+                "Result": f"Delivered the feature on schedule with zero critical post-release defects, improving processing throughput by ~25-30%."
+            },
+            "pro_tip": f"Be specific about technical trade-offs you made when choosing {primary_tech} over alternatives."
+        },
+        {
+            "category": "⚡ Scalability & System Architecture",
+            "question": "How do you design services for reliability, resilience, and graceful error handling?",
+            "star_framework": {
+                "Situation": "Handling unexpected traffic spikes and third-party API dependencies without cascading failures.",
+                "Task": "Ensure our services degrade gracefully rather than throwing 500 errors to end users.",
+                "Action": f"Implemented circuit breakers, idempotent retries, exponential backoff, and asynchronous queue processing leveraging {third_tech}.",
+                "Result": "Reduced system outage risk significantly and maintained 99.9% uptime during peak loads."
+            },
+            "pro_tip": "Interviewers love hearing about idempotency, database connection pooling, and proactive telemetry/logging."
+        },
+        {
+            "category": "🤝 Cross-Functional & Conflict Resolution",
+            "question": "Tell me about a time you had a technical disagreement with a teammate or product manager. How did you resolve it?",
+            "star_framework": {
+                "Situation": "A disagreement arose regarding whether to take on technical debt to hit an aggressive deadline versus building a scalable long-term solution.",
+                "Task": "Find an alignment that respected business urgency without compromising code maintainability.",
+                "Action": "Broke down the feature into a lean phase 1 (core MVP) with explicit technical interfaces, and scheduled phase 2 refactoring directly into the next sprint roadmap.",
+                "Result": "The product launched on time to customers, and the refactoring was completed cleanly without regressions."
+            },
+            "pro_tip": "Focus on data-driven decision making and zero-ego collaboration rather than 'winning' an argument."
+        },
+        {
+            "category": "📈 Motivation & Growth Alignment",
+            "question": f"Why are you interested in joining {company} specifically as a {title}?",
+            "star_framework": {
+                "Situation": f"I've been tracking {company}'s market impact and engineering standards.",
+                "Task": f"I want to apply my hands-on background in {', '.join(top_skills[:3])} to solve real-world problems for your users.",
+                "Action": f"Researched your product roadmap, public engineering blogs, and team challenges to ensure strong day-one readiness.",
+                "Result": f"Ready to hit the ground running, deliver immediate velocity, and contribute to {company}'s high engineering bar."
+            },
+            "pro_tip": f"Mention a specific product feature or challenge that {company} works on to prove you researched them."
+        }
+    ]
+
+    reverse_questions = [
+        f"What are the biggest technical hurdles or architectural challenges the {title} team is currently tackling this quarter?",
+        "How does the engineering team balance shipping new customer features with addressing technical debt and test coverage?",
+        f"What does a successful first 90 days look like for someone stepping into this {title} role at {company}?"
+    ]
+
+    return {
+        "source": "offline_heuristics",
+        "role_summary": f"Targeting {title} at {company}. Strong focus on {primary_tech}, {secondary_tech}, resilience, and cross-functional velocity.",
+        "questions": questions,
+        "reverse_questions": reverse_questions
+    }
+
+def generate_interview_cheat_sheet(
+    resume_data: Dict[str, Any], 
+    job_data: Dict[str, Any], 
+    api_key: str = ""
+) -> Dict[str, Any]:
+    """Generates role-specific interview prep using Gemini AI if available, falling back to offline heuristics."""
+    if not api_key:
+        return generate_offline_interview_cheat_sheet(resume_data, job_data)
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        
+        cand_skills = _clean_str_list(resume_data.get('skills', []))
+        job_tags = _clean_str_list(job_data.get('tags', []))
+        
+        prompt = f"""
+You are a Staff Software Engineer and Senior Technical Hiring Manager.
+Create a high-impact, role-specific Interview Preparation Cheat Sheet for this candidate interviewing for this specific job.
+
+CANDIDATE PROFILE:
+Name: {resume_data.get('name', 'Candidate')}
+Skills: {', '.join(cand_skills[:15])}
+Experience Summary: {str(resume_data.get('experience', '') or '')[:800]}
+
+TARGET JOB:
+Role: {job_data.get('title', 'Software Engineer')}
+Company: {job_data.get('company', 'Company')}
+Tags: {', '.join(job_tags)}
+Description: {str(job_data.get('description', '') or '')[:1200]}
+
+Return STRICTLY valid JSON conforming to this schema:
+{{
+  "role_summary": "1-2 sentences on what this hiring team values most and their core evaluation criteria",
+  "questions": [
+    {{
+      "category": "e.g. Core Technical / Architecture / Behavioral",
+      "question": "The exact realistic question the interviewer will ask",
+      "star_framework": {{
+        "Situation": "Brief scenario connecting candidate background",
+        "Task": "Objective and challenge",
+        "Action": "Specific technical actions taken using candidate skills",
+        "Result": "Quantified positive impact or performance gain"
+      }},
+      "pro_tip": "1 key insider tip on what the interviewer is secretly grading"
+    }}
+  ],
+  "reverse_questions": [
+    "Smart question 1 to ask the interviewer",
+    "Smart question 2 to ask the interviewer",
+    "Smart question 3 to ask the interviewer"
+  ]
+}}
+Generate exactly 4 deep, non-generic interview questions in the questions array.
+"""
+        response = _call_gemini(
+            client, 
+            prompt, 
+            config={'response_mime_type': 'application/json'}
+        )
+        data = json.loads(response.text)
+        data["source"] = "gemini_ai"
+        return data
+    except Exception as e:
+        print(f"Notice: Gemini cheat sheet fallback ({str(e)[:80]}). Running offline heuristic engine.")
+        return generate_offline_interview_cheat_sheet(resume_data, job_data)
+
+def estimate_salary_benchmark(
+    job_data: Dict[str, Any], 
+    user_prefs: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    """
+    Computes market compensation benchmarks (P25, Median, P75, P90) based on role seniority,
+    tech stack domain, and location context.
+    """
+    if not user_prefs:
+        user_prefs = {}
+        
+    title = job_data.get('title', '').strip().lower()
+    location = job_data.get('location', '').strip().lower()
+    raw_salary = job_data.get('salary', '').strip()
+    
+    # 1. Base by Seniority
+    if any(k in title for k in ['intern', 'junior', 'entry', 'associate', 'trainee']):
+        p25, p50, p75, p90 = 70000, 85000, 100000, 115000
+        level = "Junior / Entry-Level"
+    elif any(k in title for k in ['director', 'head of', 'vp', 'vice president', 'chief']):
+        p25, p50, p75, p90 = 185000, 220000, 260000, 310000
+        level = "Leadership / Executive"
+    elif any(k in title for k in ['principal', 'staff', 'lead', 'architect', 'manager']):
+        p25, p50, p75, p90 = 150000, 175000, 205000, 240000
+        level = "Senior / Staff / Lead"
+    elif any(k in title for k in ['senior', 'sr.', 'sr ']):
+        p25, p50, p75, p90 = 130000, 155000, 180000, 210000
+        level = "Senior Engineer"
+    else:
+        p25, p50, p75, p90 = 105000, 125000, 145000, 170000
+        level = "Mid-Level Engineer"
+        
+    # 2. Domain Multiplier
+    multiplier = 1.0
+    domain = "Software Engineering"
+    if any(k in title for k in ['ai', 'machine learning', 'ml', 'nlp', 'llm', 'computer vision', 'deep learning']):
+        multiplier = 1.15
+        domain = "AI & Machine Learning (High Demand)"
+    elif any(k in title for k in ['devops', 'cloud', 'sre', 'infrastructure', 'platform']):
+        multiplier = 1.10
+        domain = "DevOps / SRE / Cloud Platform"
+    elif any(k in title for k in ['security', 'cybersecurity', 'infosec', 'penetration']):
+        multiplier = 1.12
+        domain = "Cybersecurity & InfoSec"
+    elif any(k in title for k in ['data engineer', 'data architect', 'big data']):
+        multiplier = 1.08
+        domain = "Data Engineering"
+    elif any(k in title for k in ['frontend', 'react', 'ui', 'web developer']):
+        multiplier = 0.98
+        domain = "Frontend / Web Development"
+        
+    # 3. Location Adjustment
+    loc_factor = 1.0
+    loc_label = "Remote (Worldwide / US Market Base)"
+    if any(k in location for k in ['india', 'in', 'delhi', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad']):
+        loc_factor = 0.35
+        loc_label = "India / South Asia Market"
+    elif any(k in location for k in ['uk', 'london', 'germany', 'berlin', 'amsterdam', 'europe', 'eu']):
+        loc_factor = 0.78
+        loc_label = "Europe / UK Tech Market"
+    elif any(k in location for k in ['san francisco', 'sf', 'new york', 'nyc', 'seattle']):
+        loc_factor = 1.20
+        loc_label = "Tier 1 US Tech Hub (SF/NYC/Seattle)"
+        
+    p25 = int(round(p25 * multiplier * loc_factor, -3))
+    p50 = int(round(p50 * multiplier * loc_factor, -3))
+    p75 = int(round(p75 * multiplier * loc_factor, -3))
+    p90 = int(round(p90 * multiplier * loc_factor, -3))
+    
+    if loc_factor == 0.35:
+        p25_str = f"₹{int(p25 * 83 / 100000)} LPA"
+        p50_str = f"₹{int(p50 * 83 / 100000)} LPA"
+        p75_str = f"₹{int(p75 * 83 / 100000)} LPA"
+        p90_str = f"₹{int(p90 * 83 / 100000)} LPA"
+        num_val = f"{int(p50 * 83 / 100000) * 100000}"
+    else:
+        p25_str = f"${p25:,.0f}"
+        p50_str = f"${p50:,.0f}"
+        p75_str = f"${p75:,.0f}"
+        p90_str = f"${p90:,.0f}"
+        num_val = str(p50)
+        
+    return {
+        "has_posted_salary": bool(raw_salary),
+        "posted_salary": raw_salary or "Not explicitly listed in posting",
+        "level": level,
+        "domain": domain,
+        "location_context": loc_label,
+        "percentiles": {
+            "p25": p25_str,
+            "p50_median": p50_str,
+            "p75": p75_str,
+            "p90_top": p90_str
+        },
+        "form_guidance": {
+            "text_input": "Competitive / Open to discussion depending on total compensation package",
+            "number_input": num_val,
+            "negotiation_tip": f"When recruiters ask for your expectations, state: 'Based on market benchmarks for {job_data.get('title','this position')} and my expertise in {domain}, I am targeting in the range of {p50_str} - {p75_str}, but am flexible for the right growth opportunity.'"
+        }
+    }
