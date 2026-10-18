@@ -26,6 +26,43 @@ def clean_html(raw_html: str) -> str:
         # Fallback regex strip
         return re.sub(r'<[^>]+>', ' ', raw_html).strip()
 
+def clean_tags(raw_tags: Any) -> List[str]:
+    """Sanitizes raw tags from scrapers into a flat list of non-empty strings."""
+    if not raw_tags:
+        return []
+    if isinstance(raw_tags, str):
+        try:
+            parsed = json.loads(raw_tags)
+            if isinstance(parsed, (list, tuple)):
+                raw_tags = parsed
+            else:
+                return [t.strip() for t in raw_tags.split(',') if t.strip()]
+        except Exception:
+            return [t.strip() for t in raw_tags.split(',') if t.strip()]
+    result = []
+    if isinstance(raw_tags, (list, tuple, set)):
+        for item in raw_tags:
+            if not item:
+                continue
+            if isinstance(item, str):
+                s = item.strip()
+                if s:
+                    result.append(s)
+            elif isinstance(item, (list, tuple, set)):
+                for sub in item:
+                    if sub and str(sub).strip():
+                        result.append(str(sub).strip())
+            elif isinstance(item, dict):
+                for k in ["name", "label", "tag", "value"]:
+                    val = item.get(k)
+                    if val and str(val).strip():
+                        result.append(str(val).strip())
+            else:
+                s = str(item).strip()
+                if s:
+                    result.append(s)
+    return result
+
 def fetch_remoteok_jobs(tag: Optional[str] = None, limit: int = 60) -> List[Dict[str, Any]]:
     jobs = []
     url = "https://remoteok.com/api"
@@ -48,11 +85,7 @@ def fetch_remoteok_jobs(tag: Optional[str] = None, limit: int = 60) -> List[Dict
                 if not title or not company:
                     continue
                     
-                tags = item.get('tags', [])
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(',')]
-                elif not isinstance(tags, list):
-                    tags = []
+                tags = clean_tags(item.get('tags', []))
                     
                 desc = clean_html(item.get('description', ''))
                 
@@ -153,9 +186,7 @@ def fetch_arbeitnow_jobs(search_query: str = "", limit: int = 40) -> List[Dict[s
                     continue
                 job_id = make_job_id("arbeitnow", str(item.get('slug') or item.get('url') or f"{title}_{company}"))
                 desc = clean_html(item.get('description', ''))
-                tags = item.get('tags', [])
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(',')]
+                tags = clean_tags(item.get('tags', []))
                 url_link = item.get('url', '')
                 jobs.append({
                     "id": job_id,
@@ -190,7 +221,7 @@ def fetch_jobicy_jobs(search_query: str = "", limit: int = 30) -> List[Dict[str,
                     continue
                 job_id = make_job_id("jobicy", str(item.get('id') or item.get('url') or f"{title}_{company}"))
                 desc = clean_html(item.get('jobDescription', ''))
-                tags = [item.get('jobIndustry', '')] if item.get('jobIndustry') else []
+                tags = clean_tags(item.get('jobIndustry'))
                 url_link = item.get('url', '')
                 salary_str = ""
                 s_min = item.get('salaryMin')
@@ -230,9 +261,7 @@ def fetch_remotive_jobs(search_query: str = "", limit: int = 35) -> List[Dict[st
                     continue
                 job_id = make_job_id("remotive", str(item.get('id') or item.get('url') or f"{title}_{company}"))
                 desc = clean_html(item.get('description', ''))
-                tags = item.get('tags', [])
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(',')]
+                tags = clean_tags(item.get('tags', []))
                 url_link = item.get('url', '')
                 salary_str = item.get('salary', '')
                 jobs.append({
@@ -423,10 +452,12 @@ def fetch_all_jobs(
         key = (j['title'].lower().strip(), j['company'].lower().strip())
         if key not in seen:
             seen.add(key)
+            j_tags = clean_tags(j.get('tags', []))
+            j['tags'] = j_tags
             # Filter by search_query if specified and not already filtered
             if search_query:
                 q = search_query.lower()
-                text = f"{j['title']} {j['company']} {' '.join(j['tags'])} {j['description']}".lower()
+                text = f"{j['title']} {j['company']} {' '.join(j_tags)} {j['description']}".lower()
                 if q not in text:
                     continue
             deduped.append(j)

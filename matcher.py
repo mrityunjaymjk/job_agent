@@ -12,12 +12,53 @@ NON_TECH_TAGS = {
     "full stack", "frontend", "backend", "fullstack", "usa", "manager", "director"
 }
 
+def extract_clean_tags(tags_input: Any) -> List[str]:
+    """Flattens and sanitizes tags from any format (nested lists, strings, dicts, None)."""
+    clean = []
+    if not tags_input:
+        return clean
+    if isinstance(tags_input, str):
+        try:
+            parsed = json.loads(tags_input)
+            if isinstance(parsed, (list, tuple)):
+                tags_input = parsed
+            else:
+                tags_input = [t.strip() for t in tags_input.split(',')]
+        except Exception:
+            tags_input = [t.strip() for t in tags_input.split(',')]
+            
+    if isinstance(tags_input, (list, set, tuple)):
+        for item in tags_input:
+            if not item:
+                continue
+            if isinstance(item, str):
+                s = item.strip()
+                if s:
+                    clean.append(s)
+            elif isinstance(item, (list, tuple, set)):
+                for sub in item:
+                    if sub and isinstance(sub, str) and sub.strip():
+                        clean.append(sub.strip())
+                    elif sub:
+                        clean.append(str(sub).strip())
+            elif isinstance(item, dict):
+                for k in ["name", "label", "tag", "value"]:
+                    val = item.get(k)
+                    if val and isinstance(val, str):
+                        clean.append(val.strip())
+            else:
+                s = str(item).strip()
+                if s:
+                    clean.append(s)
+    return clean
+
 def compute_local_match(resume_data: Dict[str, Any], job_data: Dict[str, Any]) -> Dict[str, Any]:
-    resume_skills = set([s.lower() for s in resume_data.get('skills', [])])
-    resume_text = resume_data.get('raw_text', '')
+    resume_skills = set([str(s).lower().strip() for s in (resume_data.get('skills', []) or []) if s])
+    resume_text = str(resume_data.get('raw_text', '') or '')
     
-    # Extract skills from job description and tags
-    raw_job_tags = set([t.lower().strip() for t in job_data.get('tags', [])])
+    # Extract skills from job description and tags safely
+    cleaned_tags = extract_clean_tags(job_data.get('tags', []))
+    raw_job_tags = set([t.lower().strip() for t in cleaned_tags])
     job_tags = set([t for t in raw_job_tags if t not in NON_TECH_TAGS])
     
     job_desc = job_data.get('description', '')
@@ -97,20 +138,22 @@ def analyze_match_with_gemini(
         from google import genai
         client = genai.Client(api_key=api_key)
         
+        cand_skills = [str(s).strip() for s in (resume_data.get('skills', []) or []) if s and str(s).strip()]
+        job_tags_list = extract_clean_tags(job_data.get('tags', []))
         prompt = f"""
 You are an expert technical recruiter and ATS specialist.
 Analyze this candidate's resume against the target job posting.
 
 CANDIDATE INFO:
-Name: {resume_data.get('name')}
-Skills: {', '.join(resume_data.get('skills', []))}
-Experience summary: {resume_data.get('experience', '')[:1200]}
+Name: {resume_data.get('name', 'Candidate')}
+Skills: {', '.join(cand_skills)}
+Experience summary: {str(resume_data.get('experience', '') or '')[:1200]}
 
 JOB POSTING:
-Title: {job_data.get('title')}
-Company: {job_data.get('company')}
-Tags: {', '.join(job_data.get('tags', []))}
-Description: {job_data.get('description', '')[:2000]}
+Title: {job_data.get('title', '')}
+Company: {job_data.get('company', '')}
+Tags: {', '.join(job_tags_list)}
+Description: {str(job_data.get('description', '') or '')[:2000]}
 
 Provide your evaluation in valid JSON strictly conforming to this structure:
 {{

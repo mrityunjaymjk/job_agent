@@ -795,7 +795,8 @@ elif page == "🔍 Job Discovery":
             # Quick text search filter
             if filter_text:
                 q = filter_text.lower().strip()
-                combined = f"{j.get('title','')} {j.get('company','')} {' '.join(j.get('tags',[]))} {j.get('description','')}".lower()
+                clean_tags_str = ' '.join(matcher.extract_clean_tags(j.get('tags', [])))
+                combined = f"{j.get('title','')} {j.get('company','')} {clean_tags_str} {j.get('description','')}".lower()
                 if q not in combined:
                     continue
 
@@ -852,11 +853,12 @@ elif page == "🔍 Job Discovery":
                 
                 # Tags & Matched Skills
                 matched_kws = job.get('matched_skills', [])
+                clean_job_tags = matcher.extract_clean_tags(job.get('tags', []))
                 if matched_kws:
                     chips = " ".join([f'<span class="skill-chip">✓ {s}</span>' for s in matched_kws[:7]])
                     st.markdown(f"**Matched Skills:** {chips}", unsafe_allow_html=True)
-                elif job.get('tags'):
-                    chips = " ".join([f'<span class="skill-chip">{t}</span>' for t in job.get('tags', [])[:6]])
+                elif clean_job_tags:
+                    chips = " ".join([f'<span class="skill-chip">{t}</span>' for t in clean_job_tags[:6]])
                     st.markdown(f"**Tags:** {chips}", unsafe_allow_html=True)
                     
                 # Short Description Preview

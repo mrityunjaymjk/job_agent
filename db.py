@@ -155,6 +155,22 @@ def save_jobs(jobs_list: List[Dict[str, Any]]) -> int:
     conn.close()
     return count
 
+def _clean_db_tags(raw: Any) -> List[str]:
+    if not raw:
+        return []
+    flat = []
+    if isinstance(raw, (list, tuple, set)):
+        for x in raw:
+            if isinstance(x, (list, tuple, set)):
+                for sub in x:
+                    if sub and str(sub).strip():
+                        flat.append(str(sub).strip())
+            elif x and str(x).strip():
+                flat.append(str(x).strip())
+    elif isinstance(raw, str):
+        flat = [s.strip() for s in raw.split(',') if s.strip()]
+    return flat
+
 def get_all_jobs() -> List[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -170,7 +186,8 @@ def get_all_jobs() -> List[Dict[str, Any]]:
             continue
         seen.add(key)
         try:
-            d['tags'] = json.loads(d['tags']) if d['tags'] else []
+            raw_tags = json.loads(d['tags']) if d['tags'] else []
+            d['tags'] = _clean_db_tags(raw_tags)
         except Exception:
             d['tags'] = []
         result.append(d)
@@ -185,7 +202,8 @@ def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
     if row:
         d = dict(row)
         try:
-            d['tags'] = json.loads(d['tags']) if d['tags'] else []
+            raw_tags = json.loads(d['tags']) if d['tags'] else []
+            d['tags'] = _clean_db_tags(raw_tags)
         except Exception:
             d['tags'] = []
         return d

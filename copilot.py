@@ -2,11 +2,28 @@ import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+def _clean_str_list(items: Any) -> List[str]:
+    """Helper to safely flatten and extract non-empty strings from skills/tags."""
+    if not items:
+        return []
+    if isinstance(items, str):
+        return [s.strip() for s in items.split(',') if s.strip()]
+    res = []
+    if isinstance(items, (list, tuple, set)):
+        for x in items:
+            if isinstance(x, (list, tuple, set)):
+                for sub in x:
+                    if sub and str(sub).strip():
+                        res.append(str(sub).strip())
+            elif x and str(x).strip():
+                res.append(str(x).strip())
+    return res
+
 def generate_offline_cover_letter(resume_data: Dict[str, Any], job_data: Dict[str, Any], tone: str = "Confident & Professional") -> str:
     name = resume_data.get('name', 'Candidate')
     email = resume_data.get('email', '')
     phone = resume_data.get('phone', '')
-    skills = resume_data.get('skills', [])
+    skills = _clean_str_list(resume_data.get('skills', []))
     top_skills = ", ".join(skills[:5]) if skills else "modern software development tools"
     
     company = job_data.get('company', 'Hiring Team')
@@ -82,26 +99,28 @@ def generate_cover_letter(
         from google import genai
         client = genai.Client(api_key=api_key)
         
+        cand_skills = _clean_str_list(resume_data.get('skills', []))
+        job_tags = _clean_str_list(job_data.get('tags', []))
         prompt = f"""
 You are an elite career strategist. Write a highly persuasive, tailored, ATS-friendly cover letter for this candidate applying to this specific job.
 
 TONE: {tone}
 
 CANDIDATE:
-Name: {resume_data.get('name')}
-Email: {resume_data.get('email')}
-Phone: {resume_data.get('phone')}
-Skills: {', '.join(resume_data.get('skills', []))}
+Name: {resume_data.get('name', 'Candidate')}
+Email: {resume_data.get('email', '')}
+Phone: {resume_data.get('phone', '')}
+Skills: {', '.join(cand_skills)}
 Experience & Projects summary:
-{resume_data.get('experience', '')[:1000]}
-{resume_data.get('projects', '')[:600]}
+{str(resume_data.get('experience', '') or '')[:1000]}
+{str(resume_data.get('projects', '') or '')[:600]}
 
 TARGET JOB:
-Company: {job_data.get('company')}
-Position: {job_data.get('title')}
-Tags: {', '.join(job_data.get('tags', []))}
+Company: {job_data.get('company', '')}
+Position: {job_data.get('title', '')}
+Tags: {', '.join(job_tags)}
 Description:
-{job_data.get('description', '')[:2000]}
+{str(job_data.get('description', '') or '')[:2000]}
 
 GUIDELINES:
 1. Highlight specific candidate skills that match the job description.
@@ -124,9 +143,9 @@ def generate_tailored_bullets(
     job_data: Dict[str, Any], 
     api_key: str = ""
 ) -> List[str]:
+    cand_skills = _clean_str_list(resume_data.get('skills', []))
     if not api_key:
-        skills = resume_data.get('skills', [])
-        top3 = skills[:3] if skills else ['Python', 'System Architecture', 'Cloud']
+        top3 = cand_skills[:3] if cand_skills else ['Python', 'System Architecture', 'Cloud']
         return [
             f"Designed and deployed scalable services leveraging {top3[0] if len(top3) > 0 else 'core technologies'}, improving system throughput by 30%.",
             f"Collaborated cross-functionally to integrate {top3[1] if len(top3) > 1 else 'RESTful APIs'} with automated CI/CD deployment pipelines.",
@@ -140,9 +159,9 @@ def generate_tailored_bullets(
         prompt = f"""
 Given this candidate's background and this target job, rewrite 3 high-impact resume achievement bullet points (following the Action Verb + Context + Quantified Metric format) that directly target the employer's tech stack and requirements.
 
-Candidate Skills: {', '.join(resume_data.get('skills', []))}
-Job Title: {job_data.get('title')}
-Job Description: {job_data.get('description', '')[:1200]}
+Candidate Skills: {', '.join(cand_skills)}
+Job Title: {job_data.get('title', '')}
+Job Description: {str(job_data.get('description', '') or '')[:1200]}
 
 Return JSON array of 3 strings:
 ["Bullet 1", "Bullet 2", "Bullet 3"]
@@ -230,7 +249,7 @@ def generate_persona_outreach(
     cand_name = resume_data.get('name', 'Candidate')
     company = job_data.get('company', 'the team')
     title = job_data.get('title', 'the role')
-    skills = resume_data.get('skills', [])
+    skills = _clean_str_list(resume_data.get('skills', []))
     top_skill = skills[0] if skills else "software engineering"
     top_skills_str = ", ".join(skills[:3]) if skills else "modern web architectures"
     
@@ -355,8 +374,9 @@ def generate_outreach_message(
     cand_name = resume_data.get('name', 'Candidate')
     company = job_data.get('company', 'the team')
     title = job_data.get('title', 'the role')
-    skills = resume_data.get('skills', [])
+    skills = _clean_str_list(resume_data.get('skills', []))
     top_skill = skills[0] if skills else "engineering"
+    top_skills_summary = ', '.join(skills[:3]) if skills else "software engineering"
     
     if platform.lower() == "linkedin":
         return f"Hi! I noticed the {title} opening at {company}. With my background in {top_skill} and building scalable systems, I'd love to connect and see how I could add value to your team. Best, {cand_name}"
@@ -365,7 +385,7 @@ def generate_outreach_message(
 
 Hi Hiring Team,
 
-I recently came across the {title} opening at {company} and wanted to reach out directly. With a strong background in {', '.join(skills[:3])}, I have delivered solutions that improve reliability and speed of delivery.
+I recently came across the {title} opening at {company} and wanted to reach out directly. With a strong background in {top_skills_summary}, I have delivered solutions that improve reliability and speed of delivery.
 
 I would love to learn more about the team's upcoming roadmap and share how my technical experience aligns with your goals.
 
