@@ -212,6 +212,8 @@ def fetch_jobicy_jobs(search_query: str = "", limit: int = 30) -> List[Dict[str,
                 })
     except Exception as e:
         print(f"Error fetching Jobicy jobs: {e}")
+    return jobs
+
 def fetch_remotive_jobs(search_query: str = "", limit: int = 35) -> List[Dict[str, Any]]:
     jobs = []
     url = "https://remotive.com/api/remote-jobs?category=software-dev"
@@ -380,32 +382,39 @@ def fetch_all_jobs(
 
     if "LinkedIn" in sources:
         li_jobs = fetch_linkedin_jobs(search_query=search_query, location=location or "Remote", limit=limit_per_source)
-        all_jobs.extend(li_jobs)
+        if li_jobs:
+            all_jobs.extend(li_jobs)
 
     if "Wellfound" in sources:
         wf_jobs = fetch_wellfound_jobs(search_query=search_query, limit=limit_per_source)
-        all_jobs.extend(wf_jobs)
+        if wf_jobs:
+            all_jobs.extend(wf_jobs)
     
     if "RemoteOK" in sources:
         tag = search_query if search_query else None
         rok_jobs = fetch_remoteok_jobs(tag=tag, limit=limit_per_source)
-        all_jobs.extend(rok_jobs)
+        if rok_jobs:
+            all_jobs.extend(rok_jobs)
 
     if "Arbeitnow" in sources:
         arbeit_jobs = fetch_arbeitnow_jobs(search_query=search_query, limit=limit_per_source)
-        all_jobs.extend(arbeit_jobs)
+        if arbeit_jobs:
+            all_jobs.extend(arbeit_jobs)
 
     if "Jobicy" in sources:
         jobicy_jobs = fetch_jobicy_jobs(search_query=search_query, limit=limit_per_source)
-        all_jobs.extend(jobicy_jobs)
+        if jobicy_jobs:
+            all_jobs.extend(jobicy_jobs)
 
     if "Remotive" in sources:
         remotive_jobs = fetch_remotive_jobs(search_query=search_query, limit=limit_per_source)
-        all_jobs.extend(remotive_jobs)
+        if remotive_jobs:
+            all_jobs.extend(remotive_jobs)
         
     if "WeWorkRemotely" in sources:
         wwr_jobs = fetch_weworkremotely_jobs(category=category, limit=limit_per_source)
-        all_jobs.extend(wwr_jobs)
+        if wwr_jobs:
+            all_jobs.extend(wwr_jobs)
         
     # Deduplicate by title & company
     seen = set()
