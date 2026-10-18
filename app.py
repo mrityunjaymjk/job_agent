@@ -597,19 +597,19 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Samsung Galaxy S24 & Pixel 9a Mobile Access Card
+    # Mobile Sync Card
     local_ip = get_local_ip()
     mobile_url = f"http://{local_ip}:8501"
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={mobile_url}"
     
-    with st.expander("📱 Galaxy S24 & Mobile Sync", expanded=False):
+    with st.expander("📱 Mobile Sync", expanded=False):
         st.markdown(f"""
         <div style="text-align: center; padding: 4px 0;">
-            <div style="font-size: 0.78rem; font-weight: 700; color: #60A5FA; margin-bottom: 6px;">Scan with Galaxy S24 / Phone Camera</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #60A5FA; margin-bottom: 6px;">Scan with Phone Camera</div>
             <img src="{qr_url}" style="width: 130px; height: 130px; border-radius: 12px; background: white; padding: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" />
             <div style="font-size: 0.72rem; color: #94A3B8; margin-top: 8px;">Or open on mobile:</div>
             <div style="font-size: 0.76rem; font-weight: 600; color: #38BDF8; word-break: break-all; margin-top: 2px;"><code>{mobile_url}</code></div>
-            <div style="font-size: 0.68rem; color: #64748B; margin-top: 6px; line-height: 1.3;">Galaxy S24 & Pixel 9a ready! In Chrome or Samsung Internet, tap ⋮ ➡️ <i>Install app</i> (or <i>Add to Home</i>) for full-screen PWA!</div>
+            <div style="font-size: 0.68rem; color: #64748B; margin-top: 6px; line-height: 1.3;">In Chrome or Safari, tap ⋮ / Share ➡️ <i>Install app</i> (or <i>Add to Home</i>) for full-screen PWA!</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1560,8 +1560,8 @@ elif page == "⚙️ Settings":
                         st.error(sync_res.get("message"))
 
     with st.container(border=True):
-        st.subheader("📱 Samsung Galaxy S24, Pixel 9a & Mobile Experience")
-        st.write("Use this Co-Pilot on your smartphone (Samsung Galaxy S24 / S24+ / S24 Ultra, Google Pixel 9a, Android, or iOS) with a tailored One UI 6.1 squircle touch interface.")
+        st.subheader("📱 Mobile Sync & App Experience")
+        st.write("Use this Co-Pilot on any smartphone (Samsung Galaxy, Google Pixel, Android, or iOS) with a tailored touch interface.")
         
         local_ip = get_local_ip()
         mobile_url = f"http://{local_ip}:8501"
@@ -1572,18 +1572,18 @@ elif page == "⚙️ Settings":
             st.markdown(f'<div style="text-align: center; background: white; padding: 12px; border-radius: 16px; border: 1px solid #E2E8F0; display: inline-block;"><img src="{qr_img_url}" width="160" height="160" alt="Mobile QR Code" /><div style="font-size: 0.75rem; color: #64748B; margin-top: 6px; font-weight: 600;">Scan with Phone Camera</div></div>', unsafe_allow_html=True)
         with m_col2:
             st.markdown(f"#### 🌐 Mobile Web URL: `{mobile_url}`")
-            st.write("1. **Connect:** Ensure your Galaxy S24 or phone is connected to the same Wi-Fi network.")
-            st.write("2. **Open:** Scan the QR code with your camera or open Google Chrome or Samsung Internet.")
+            st.write("1. **Connect:** Ensure your phone is connected to the same Wi-Fi network.")
+            st.write("2. **Open:** Scan the QR code with your camera or open Google Chrome / Safari / Samsung Internet.")
             st.write("3. **Install as App (PWA):**")
             st.markdown("""
             - **Google Chrome**: Tap **(⋮)** ➡️ **'Install app'** (or **'Add to Home screen'**).
-            - **Samsung Internet**: Tap hamburger menu **(☰)** ➡️ **'Add page to'** ➡️ **'App screen'**.
+            - **Samsung Internet / Safari**: Tap menu **(☰)** or Share ➡️ **'Add page to'** / **'Add to Home Screen'**.
             """)
-            st.write("4. **Galaxy S24 Series & Mobile Optimizations Active:**")
+            st.write("4. **Mobile Optimizations Active:**")
             st.markdown("""
-            - 🎯 **Dynamic AMOLED 2X 120Hz Smoothness**: Hardware-accelerated smooth scrolling and fluid 120fps touch transitions.
-            - 💫 **Samsung One UI 6.1 Squircle Surfaces**: 20px squircle card radius, elevation shadows, and hidden horizontal tab scrollbars.
-            - 📐 **Adaptive Viewports (360px - 432px)**: Automatically scales across S24 (6.2\"), S24+ (6.7\"), S24 Ultra (6.8\"), and Pixel 9a without text truncation or horizontal overflow.
+            - 🎯 **120Hz Smooth Scrolling**: Hardware-accelerated smooth scrolling and fluid touch transitions.
+            - 💫 **Modern Squircle Surfaces**: 20px squircle card radius, elevation shadows, and hidden horizontal tab scrollbars.
+            - 📐 **Adaptive Viewports (360px - 432px)**: Automatically scales across standard and large screens without text truncation or horizontal overflow.
             - 👆 **Tactile 46px Touch Targets**: 2×2 button and metric grid with instant haptic visual feedback on thumb tap.
             - 📋 **1-Tap Mobile Clipboard**: Copy tailored cover letters, application kit answers, and LinkedIn outreach notes instantly.
             """)
