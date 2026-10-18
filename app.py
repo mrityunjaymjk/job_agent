@@ -1203,6 +1203,20 @@ elif page == "📊 Application Tracker":
     m3.metric("🤝 Interviews", interview_count)
     m4.metric("🎉 Offers", offer_count)
     
+    col_t_met, col_t_exp = st.columns([3, 1])
+    with col_t_exp:
+        if apps:
+            apps_df = pd.DataFrame(apps)
+            csv_data = apps_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Export Pipeline CSV",
+                data=csv_data,
+                file_name=f"job_applications_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="Export all tracked jobs and application stages to CSV."
+            )
+
     st.divider()
     
     if not apps:
