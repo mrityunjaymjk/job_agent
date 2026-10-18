@@ -38,14 +38,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# PWA Mobile App Support
+# PWA & iOS Safari Mobile Support (iPhone 13-18, Android & Modern WebKit)
 st.markdown("""
 <link rel="manifest" href="/app/static/manifest.json">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JobAgent">
+<meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#1E3A8A">
+<link rel="apple-touch-icon" href="https://api.iconify.design/lucide:briefcase.svg?color=%231E3A8A">
 """, unsafe_allow_html=True)
 
 # Custom Styling
@@ -192,23 +195,28 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ================= SAMSUNG GALAXY S24 / S24+ / S24 ULTRA & MOBILE UI ================= */
+    /* ================= IPHONE (13-18 / PRO / MAX), GALAXY S24 & MOBILE UI ================= */
     html {
         scroll-behavior: smooth !important;
         -webkit-tap-highlight-color: transparent !important;
     }
 
+    body, button, input, select, textarea {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif !important;
+        -webkit-font-smoothing: antialiased !important;
+    }
+
     @media (max-width: 768px) {
-        /* Optimize screen padding for Samsung Galaxy S24 (360px-393px) and S24+/Ultra (412px-432px) */
+        /* iOS Safe Area Insets for iPhone 13-18 (Notch & Dynamic Island) and Android */
         .block-container {
-            padding-top: max(0.85rem, env(safe-area-inset-top)) !important;
+            padding-top: max(1.0rem, calc(env(safe-area-inset-top) + 0.35rem)) !important;
             padding-bottom: max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem)) !important;
             padding-left: max(0.70rem, env(safe-area-inset-left)) !important;
             padding-right: max(0.70rem, env(safe-area-inset-right)) !important;
             max-width: 100vw !important;
         }
 
-        /* Samsung One UI 6.1 & Material You responsive typography */
+        /* Apple SF Pro & Modern responsive typography */
         .main-header {
             font-size: 1.40rem !important;
             line-height: 1.25 !important;
@@ -223,22 +231,23 @@ st.markdown("""
             color: #64748B !important;
         }
 
-        /* Prevent auto-zooming on focus in Samsung Internet & Mobile Chrome */
-        input, select, textarea, [data-baseweb="input"] input {
+        /* Prevent auto-zooming on focus in iOS Safari & Mobile Chrome (requires >= 16px) */
+        input, select, textarea, [data-baseweb="input"] input, [data-baseweb="select"] input {
             font-size: 16px !important;
+            -webkit-appearance: none !important;
         }
 
-        /* Samsung One UI 6.1 Squircle Card Surfaces */
+        /* iOS Widget / Squircle Card Surfaces */
         [data-testid="stVerticalBlockBorderWrapper"] {
             border-radius: 20px !important;
             border: 1px solid #E2E8F0 !important;
-            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04) !important;
+            box-shadow: 0 3px 14px rgba(15, 23, 42, 0.04) !important;
             padding: 0.95rem 0.80rem !important;
             margin-bottom: 0.80rem !important;
             background: #FFFFFF !important;
         }
 
-        /* Metrics: 2x2 grid on Samsung Galaxy S24 / Pixel 9a */
+        /* Metrics: 2x2 grid on iPhone 13-18 & Galaxy S24 */
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -272,7 +281,7 @@ st.markdown("""
             min-width: 0 !important;
         }
 
-        /* Samsung One UI Tactile touch buttons: 46px height with 120Hz smooth active press */
+        /* Tactile touch buttons: 46px min height with iOS haptic active press */
         .stButton > button, 
         .stLinkButton > a {
             min-height: 46px !important;
@@ -284,6 +293,8 @@ st.markdown("""
             justify-content: center !important;
             touch-action: manipulation !important;
             -webkit-tap-highlight-color: transparent !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
             transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), background-color 0.15s ease !important;
         }
         .stButton > button:active,
@@ -302,7 +313,7 @@ st.markdown("""
             min-width: 80px !important;
         }
 
-        /* Quick-fill kit code blocks & chips: S24 compact spacing */
+        /* Quick-fill kit code blocks & chips: compact spacing */
         .stCodeBlock {
             border-radius: 14px !important;
             margin-bottom: 6px !important;
@@ -316,15 +327,15 @@ st.markdown("""
             margin: 0.12rem !important;
         }
 
-        /* Mobile Hamburger Drawer Control */
+        /* Mobile Hamburger Drawer Control - Positioned cleanly under Dynamic Island / Notch */
         [data-testid="stSidebarCollapsedControl"] {
             background: #1E3A8A !important;
             color: #FFFFFF !important;
             border-radius: 14px !important;
             padding: 6px !important;
             box-shadow: 0 4px 14px rgba(30, 58, 138, 0.35) !important;
-            top: 0.60rem !important;
-            left: 0.60rem !important;
+            top: max(0.65rem, calc(env(safe-area-inset-top) + 0.30rem)) !important;
+            left: max(0.65rem, env(safe-area-inset-left)) !important;
             z-index: 9999 !important;
         }
         [data-testid="stSidebarCollapsedControl"] svg {
@@ -332,7 +343,7 @@ st.markdown("""
             stroke: #FFFFFF !important;
         }
 
-        /* Drawer navigation items: One UI thumb reach */
+        /* Drawer navigation items */
         [data-testid="stSidebar"] label[data-testid="stRadioOption"],
         [data-testid="stSidebar"] div[role="radiogroup"] > label {
             min-height: 48px !important;
@@ -341,7 +352,7 @@ st.markdown("""
             font-size: 0.96rem !important;
         }
 
-        /* Tab strip scrolling: hide scrollbars for clean One UI aesthetic */
+        /* Tab strip scrolling: native iOS momentum with hidden scrollbars */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             overflow-x: auto !important;
             white-space: nowrap !important;
@@ -361,22 +372,42 @@ st.markdown("""
         }
     }
 
-    /* Extra compact optimization for 360px - 390px (Galaxy S24 standard viewports) */
-    @media (max-width: 395px) {
+    /* iPhone 13 mini / Small Screens (375px) */
+    @media (max-width: 380px) {
         .block-container {
-            padding-left: 0.55rem !important;
-            padding-right: 0.55rem !important;
+            padding-left: 0.50rem !important;
+            padding-right: 0.50rem !important;
         }
         .main-header {
-            font-size: 1.30rem !important;
+            font-size: 1.25rem !important;
         }
         [data-testid="stMetricValue"] {
-            font-size: 1.18rem !important;
+            font-size: 1.15rem !important;
         }
         .stButton > button, 
         .stLinkButton > a {
-            font-size: 0.84rem !important;
-            padding: 0 6px !important;
+            font-size: 0.82rem !important;
+            min-height: 42px !important;
+            padding: 0 4px !important;
+        }
+    }
+
+    /* iPhone 13, 14, 15, 16, 17, 18 Standard / Pro & Galaxy S24 (381px - 410px) */
+    @media (min-width: 381px) and (max-width: 410px) {
+        .main-header {
+            font-size: 1.38rem !important;
+        }
+        .stButton > button, 
+        .stLinkButton > a {
+            min-height: 44px !important;
+            font-size: 0.88rem !important;
+        }
+    }
+
+    /* iPhone Plus & Pro Max / Galaxy S24+ & Ultra (411px - 440px) */
+    @media (min-width: 411px) and (max-width: 768px) {
+        .main-header {
+            font-size: 1.48rem !important;
         }
     }
 </style>
@@ -1561,7 +1592,7 @@ elif page == "⚙️ Settings":
 
     with st.container(border=True):
         st.subheader("📱 Mobile Sync & App Experience")
-        st.write("Use this Co-Pilot on any smartphone (Samsung Galaxy, Google Pixel, Android, or iOS) with a tailored touch interface.")
+        st.write("Use this Co-Pilot on any smartphone (**iPhone 13–18 / Pro / Max**, **Samsung Galaxy**, **Google Pixel**, Android, or iOS) with a tailored touch interface.")
         
         local_ip = get_local_ip()
         mobile_url = f"http://{local_ip}:8501"
@@ -1573,19 +1604,21 @@ elif page == "⚙️ Settings":
         with m_col2:
             st.markdown(f"#### 🌐 Mobile Web URL: `{mobile_url}`")
             st.write("1. **Connect:** Ensure your phone is connected to the same Wi-Fi network.")
-            st.write("2. **Open:** Scan the QR code with your camera or open Google Chrome / Safari / Samsung Internet.")
-            st.write("3. **Install as App (PWA):**")
+            st.write("2. **Open:** Scan the QR code with your camera or open in Safari / Chrome.")
+            st.write("3. **Install as Full-Screen App (PWA):**")
             st.markdown("""
-            - **Google Chrome**: Tap **(⋮)** ➡️ **'Install app'** (or **'Add to Home screen'**).
-            - **Samsung Internet / Safari**: Tap menu **(☰)** or Share ➡️ **'Add page to'** / **'Add to Home Screen'**.
+            - 🍎 **iPhone (Safari)**: Tap the Share button **([↑])** ➡️ scroll down and tap **'Add to Home Screen'** ➡️ tap **Add**.
+            - 🤖 **Android (Chrome)**: Tap **(⋮)** ➡️ **'Install app'** (or **'Add to Home screen'**).
+            - 🪐 **Samsung Internet**: Tap menu **(☰)** ➡️ **'Add page to'** ➡️ **'App screen'**.
             """)
-            st.write("4. **Mobile Optimizations Active:**")
+            st.write("4. **iPhone 13–18 & Mobile Optimizations Active:**")
             st.markdown("""
-            - 🎯 **120Hz Smooth Scrolling**: Hardware-accelerated smooth scrolling and fluid touch transitions.
-            - 💫 **Modern Squircle Surfaces**: 20px squircle card radius, elevation shadows, and hidden horizontal tab scrollbars.
-            - 📐 **Adaptive Viewports (360px - 432px)**: Automatically scales across standard and large screens without text truncation or horizontal overflow.
-            - 👆 **Tactile 46px Touch Targets**: 2×2 button and metric grid with instant haptic visual feedback on thumb tap.
-            - 📋 **1-Tap Mobile Clipboard**: Copy tailored cover letters, application kit answers, and LinkedIn outreach notes instantly.
+            - 🏝️ **Dynamic Island & Notch Safe Areas**: Headers and menus automatically inset below the Dynamic Island / Notch and above the bottom Home Bar.
+            - 🚫 **No Input Auto-Zoom**: Inputs formatted to prevent iOS Safari from zooming into form fields on tap.
+            - ⚡ **120Hz ProMotion & AMOLED Smoothness**: Hardware-accelerated smooth scrolling and fluid touch response.
+            - 💫 **iOS Widget Surfaces**: 20px rounded card surfaces, elevation shadows, and hidden tab scrollbars.
+            - 📐 **Adaptive iPhone Viewports (375px - 440px)**: Scales from iPhone 13 mini (375px) to standard 13-18 Pro (390-402px) and Pro Max / Plus (428-440px).
+            - 📋 **1-Tap Clipboard**: Instantly copy tailored cover letters, quick-apply answers, and outreach notes directly into the iOS LinkedIn or Mail apps.
             """)
 
     with st.container(border=True):
