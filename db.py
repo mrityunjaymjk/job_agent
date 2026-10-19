@@ -90,6 +90,8 @@ def init_db():
                 cursor.execute("UPDATE resumes SET is_active = 0")
                 cursor.execute("UPDATE resumes SET is_active = 1 WHERE id = ?", (alex[0],))
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', 'San Francisco, CA')")
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('linkedin_url', 'https://linkedin.com/in/alexmorgan-dev')")
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('portfolio_url', 'https://github.com/alexmorgan-dev')")
                 conn.commit()
             else:
                 sample_path = Path(__file__).parent / "sample_resume.txt"
@@ -113,6 +115,8 @@ def init_db():
                         parsed.get("location", "San Francisco, CA")
                     ))
                     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', ?)", (parsed.get("location", "San Francisco, CA"),))
+                    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('linkedin_url', ?)", (parsed.get("links", {}).get("linkedin", "https://linkedin.com/in/alexmorgan-dev"),))
+                    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('portfolio_url', ?)", (parsed.get("links", {}).get("github", "https://github.com/alexmorgan-dev"),))
                     conn.commit()
     except Exception:
         pass

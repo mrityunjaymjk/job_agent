@@ -1115,31 +1115,57 @@ if page == "📄 Resume Profile":
     st.subheader("⚙️ Default Application Answers")
     st.caption("These default values are used by the Co-Pilot to pre-fill common job application fields.")
     
+    NOTICE_OPTIONS = [
+        "Immediate (2 weeks)",
+        "Immediate (Available Now)",
+        "1 Month (30 days)",
+        "2 Months (60 days)",
+        "3 Months (90 days)",
+        "Serving Notice Period",
+        "Casual / Exploring"
+    ]
+    curr_notice = db.get_setting("notice_period", "Immediate (2 weeks)")
+    if curr_notice not in NOTICE_OPTIONS:
+        NOTICE_OPTIONS.insert(0, curr_notice)
+    notice_idx = NOTICE_OPTIONS.index(curr_notice)
+
+    WORK_AUTH_OPTIONS = [
+        "Authorized to work without sponsorship",
+        "Requires visa sponsorship",
+        "US Citizen / Permanent Resident",
+        "EU Citizen",
+        "Other"
+    ]
+    curr_auth = db.get_setting("work_auth", WORK_AUTH_OPTIONS[0])
+    if curr_auth not in WORK_AUTH_OPTIONS:
+        WORK_AUTH_OPTIONS.append(curr_auth)
+    auth_idx = WORK_AUTH_OPTIONS.index(curr_auth)
+
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
-        years_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "4+ years"))
+        years_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "5+ years"), key="ans_years_exp")
     with col_p2:
-        expected_salary = st.text_input("Expected Salary / Rate", value=db.get_setting("expected_salary", "$110,000 - $140,000 / yr"))
+        expected_salary = st.text_input("Expected Salary / Rate", value=db.get_setting("expected_salary", "$110,000 - $140,000 / yr"), key="ans_expected_salary")
     with col_p3:
-        notice_period = st.text_input("Notice Period / Availability", value=db.get_setting("notice_period", "Immediate (2 weeks)"))
+        notice_period = st.selectbox("Notice Period / Availability", NOTICE_OPTIONS, index=notice_idx, key="ans_notice_period")
         
-    col_p4, col_p5 = st.columns(2)
+    col_p4, col_p5, col_p6 = st.columns(3)
     with col_p4:
-        work_auth = st.selectbox(
-            "Work Authorization", 
-            ["Authorized to work without sponsorship", "Requires visa sponsorship", "US Citizen / Permanent Resident", "EU Citizen", "Other"],
-            index=0
-        )
+        work_auth = st.selectbox("Work Authorization", WORK_AUTH_OPTIONS, index=auth_idx, key="ans_work_auth")
     with col_p5:
-        portfolio_url = st.text_input("Portfolio / GitHub URL", value=db.get_setting("portfolio_url", "https://github.com/"))
+        linkedin_url = st.text_input("LinkedIn Profile URL", value=db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"), key="ans_linkedin_url")
+    with col_p6:
+        portfolio_url = st.text_input("Portfolio / GitHub URL", value=db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev"), key="ans_portfolio_url")
         
-    if st.button("Save Application Preferences"):
-        db.set_setting("years_exp", years_exp)
-        db.set_setting("expected_salary", expected_salary)
+    if st.button("Save Application Preferences", type="primary", key="btn_save_app_prefs"):
+        db.set_setting("years_exp", years_exp.strip())
+        db.set_setting("expected_salary", expected_salary.strip())
         db.set_setting("notice_period", notice_period)
         db.set_setting("work_auth", work_auth)
-        db.set_setting("portfolio_url", portfolio_url)
-        st.success("Preferences saved successfully!")
+        db.set_setting("linkedin_url", linkedin_url.strip())
+        db.set_setting("portfolio_url", portfolio_url.strip())
+        st.success("Application preferences & LinkedIn profile saved successfully!")
+        st.rerun()
 
 # ================= PAGE 2: JOB DISCOVERY =================
 elif page == "🔍 Job Discovery":
@@ -1662,10 +1688,12 @@ elif page == "🎯 Match & Co-Pilot":
         with tool_tab4:
             st.write("Copy-paste ready answers for typical company application portals (Workday, Greenhouse, Lever):")
             user_prefs = {
-                "years_exp": db.get_setting("years_exp", "4+ years"),
+                "years_exp": db.get_setting("years_exp", "5+ years"),
                 "expected_salary": db.get_setting("expected_salary", "$120,000 / yr"),
-                "work_auth": db.get_setting("work_auth", "Authorized to work"),
-                "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)")
+                "work_auth": db.get_setting("work_auth", "Authorized to work without sponsorship"),
+                "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)"),
+                "linkedin_url": db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"),
+                "portfolio_url": db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev")
             }
             form_answers = copilot.generate_application_answers(active_resume, target_job, user_prefs)
             for q, a in form_answers.items():
@@ -1718,10 +1746,12 @@ elif page == "🎯 Match & Co-Pilot":
             st.caption(f"Real-time compensation benchmark and application negotiation guidance for **{target_job['title']}** at **{target_job['company']}**.")
             
             user_prefs_dict = {
-                "years_exp": db.get_setting("years_exp", "4+ years"),
+                "years_exp": db.get_setting("years_exp", "5+ years"),
                 "expected_salary": db.get_setting("expected_salary", "$120,000 / yr"),
-                "work_auth": db.get_setting("work_auth", "Authorized to work"),
-                "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)")
+                "work_auth": db.get_setting("work_auth", "Authorized to work without sponsorship"),
+                "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)"),
+                "linkedin_url": db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"),
+                "portfolio_url": db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev")
             }
             salary_data = copilot.estimate_salary_benchmark(target_job, user_prefs_dict)
             
@@ -1897,7 +1927,11 @@ elif page == "⚙️ Settings":
             cfg_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "4+ years"), key="cfg_exp")
             cfg_sal = st.text_input("Expected Salary / Rate", value=db.get_setting("expected_salary", "$130,000 / yr (Flexible)"), key="cfg_sal")
             cfg_auth = st.text_input("Work Authorization", value=db.get_setting("work_auth", "Authorized to work without sponsorship"), key="cfg_auth")
-            cfg_not = st.text_input("Notice Period / Availability", value=db.get_setting("notice_period", "Immediate (2 weeks)"), key="cfg_not")
+            notice_set_opts = ["Immediate (2 weeks)", "Immediate (Available Now)", "1 Month (30 days)", "2 Months (60 days)", "3 Months (90 days)", "Serving Notice Period", "Casual / Exploring"]
+            curr_set_not = db.get_setting("notice_period", "Immediate (2 weeks)")
+            if curr_set_not not in notice_set_opts:
+                notice_set_opts.insert(0, curr_set_not)
+            cfg_not = st.selectbox("Notice Period / Availability", notice_set_opts, index=notice_set_opts.index(curr_set_not), key="cfg_not")
             
         if st.button("Save Profile Defaults", type="primary", key="btn_save_defaults"):
             db.set_setting("linkedin_url", cfg_li.strip())

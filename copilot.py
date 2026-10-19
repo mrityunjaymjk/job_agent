@@ -413,8 +413,8 @@ def generate_application_answers(
         "Expected Salary / Compensation": custom_prefs.get('expected_salary', 'Competitive / Market Rate (Negotiable)'),
         "Work Authorization / Visa Status": custom_prefs.get('work_auth', 'Authorized to work without sponsorship'),
         "Availability / Notice Period": custom_prefs.get('notice_period', 'Immediate / 2 weeks'),
-        "Portfolio / GitHub": resume_data.get('links', {}).get('github', 'https://github.com/'),
-        "LinkedIn Profile": resume_data.get('links', {}).get('linkedin', 'https://linkedin.com/in/')
+        "Portfolio / GitHub": custom_prefs.get('portfolio_url') or resume_data.get('links', {}).get('github', 'https://github.com/'),
+        "LinkedIn Profile": custom_prefs.get('linkedin_url') or resume_data.get('links', {}).get('linkedin', 'https://linkedin.com/in/')
     }
 
 def generate_offline_interview_cheat_sheet(
