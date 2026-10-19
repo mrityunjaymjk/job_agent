@@ -1,36 +1,41 @@
-Alex Morgan
-alex.morgan@email.com | +1 (555) 234-5678 | San Francisco, CA
-https://linkedin.com/in/alexmorgan-dev
-https://github.com/alexmorgan-dev
+ANSHUMAN ROY
+Aundh, India 411007  |  8982725556  |  1999anshumanroy@gmail.com
 
-PROFESSIONAL SUMMARY
-Senior Full Stack & Python Software Engineer with 5+ years of experience designing, building, and deploying scalable distributed systems, cloud microservices, and AI-powered applications. Passionate about clean code, high performance, and rapid product iteration in remote-first environments.
+SUMMARY
+Results-driven IT Professional with over 4 years in Service Desk and Technical Support. Led support teams in incident management and SLA compliance while implementing process improvements using ServiceNow and Salesforce. Excelled in stakeholder management and team coaching, delivering efficient IT solutions that prioritise customer satisfaction.
 
-TECHNICAL SKILLS
-Languages: Python, JavaScript, TypeScript, SQL, Bash
-Frontend: React, Next.js, HTML, CSS, Tailwind CSS, Redux
-Backend & APIs: FastAPI, Django, Flask, Node.js, Express.js, REST API, GraphQL
-Data & AI: Machine Learning, PyTorch, Pandas, NumPy, Scikit-Learn, LLM, LangChain
-Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD, GitHub Actions, Linux, Terraform, Nginx
-Databases: PostgreSQL, Redis, MongoDB, SQLite, MySQL
+EXPERIENCE
+Senior Technical Specialist    06/2022 – Current
+Concentrix
+• Act as the primary escalation point for complex technical and client issues, ensuring timely resolution and high customer satisfaction.
+• Provide Level 2 technical support for Dell Enterprise clients, troubleshooting hardware, software, network, server, and application-related issues.
+• Perform complex problem diagnosis and Root Cause Analysis (RCA) to identify and resolve recurring technical issues.
+• Provide technical assistance through phone, email, and remote support, ensuring effective communication with technical and non-technical users.
+• Assist with the initial setup, configuration, upgrades, and maintenance of Dell PowerEdge servers, storage, and networking equipment.
+• Created and maintained technical documentation, troubleshooting guides, and resolution records to facilitate knowledge sharing and operational efficiency.
+• Lead and supervise a team of 10–15 technical support professionals, ensuring productivity, quality, and SLA targets are consistently achieved.
+• Monitor team performance using Power BI, Salesforce, and ServiceNow, identifying performance gaps and implementing improvement plans.
+• Conduct regular team meetings, coaching sessions, and performance reviews to enhance employee engagement and performance.
+• Coordinate with international and cross-functional teams to resolve high-priority incidents and ensure seamless service delivery.
+• Manage team schedules, shift allocations, leave planning, and workforce utilisation to ensure operational continuity.
+• Support recruitment, onboarding, and training of new team members and assisted with Performance Improvement Plans (PIPs) as needed.
 
-WORK EXPERIENCE
-Senior Software Engineer | CloudScale Tech (Remote) | 2022 - Present
-• Designed and developed resilient microservices handling over 50M API requests/day with FastAPI and PostgreSQL.
-• Reduced backend response latency by 42% through query optimization and Redis caching layer implementation.
-• Built full-stack interactive dashboards using React and TypeScript, boosting customer engagement by 28%.
-• Led the migration of legacy monolith to containerized Docker services orchestrated with Kubernetes on AWS.
-• Mentored 4 junior engineers on unit testing, code review standards, and CI/CD automation pipelines.
+SKILLS
+• ServiceNow | • Active Directory | • Salesforce
+• PowerShell | • JIRA | • Intune
+• Incident Management | • Virtual Desktop Infrastructure | • Performance Monitoring
+• Exchange Admin Portal | • Windows | • Admin Portal
+• Linux | • Microsoft Dynamics | • Azure
 
-Full Stack Software Engineer | Horizon Data Labs | 2020 - 2022
-• Developed REST APIs and data processing pipelines utilizing Python, Django, and Celery.
-• Integrated third-party APIs and payment processors with 99.9% uptime.
-• Automated release cycles with GitHub Actions, reducing deployment time from 45 minutes to 8 minutes.
+LANGUAGES
+English    Bengali    Hindi
 
 EDUCATION
-Bachelor of Science in Computer Science
-University of California, Berkeley | 2016 - 2020
+11/2020    M.I.T.A.C.S.C – Pune
+Bachelor of Business Administration
 
-PROJECTS
-• AI Code Assistant: Open-source developer tool utilizing LLMs and vector search for automated code explanations.
-• Real-Time Stock Analytics Engine: Distributed event-driven dashboard built with Python, WebSockets, and React.
+HOBBIES & INTERESTS
+Playing Snooker
+Cricket
+Animal Welfare & Community Service
+Member – Animal Welfare NGO (Bezuban Bilaspur)

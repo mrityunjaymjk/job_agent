@@ -414,7 +414,8 @@ st.markdown("""
 
     /* Desktop: Hide Mobile Bottom Navigation Dock */
     @media (min-width: 769px) {
-        .st-key-mobile_bottom_dock {
+        .st-key-mobile_bottom_dock,
+        div:has(> div > [data-testid="stHorizontalBlock"] button[key^="mob_btn_"]) {
             display: none !important;
         }
     }
@@ -425,7 +426,9 @@ st.markdown("""
             padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
         }
 
-        .st-key-mobile_bottom_dock {
+        .st-key-mobile_bottom_dock,
+        div[class*="st-key-mobile_bottom_dock"],
+        div:has(> div > [data-testid="stHorizontalBlock"] button[key^="mob_btn_"]) {
             display: block !important;
             position: fixed !important;
             bottom: 0 !important;
@@ -433,71 +436,99 @@ st.markdown("""
             right: 0 !important;
             width: 100vw !important;
             max-width: 100vw !important;
-            background: rgba(15, 23, 42, 0.94) !important;
+            background: rgba(15, 23, 42, 0.95) !important;
             backdrop-filter: blur(24px) saturate(180%) !important;
             -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
             border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
-            padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px !important;
+            padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px !important;
             margin: 0 !important;
             z-index: 999999 !important;
-            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45) !important;
+            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5) !important;
         }
 
-        .st-key-mobile_bottom_dock [data-testid="stHorizontalBlock"] {
+        /* Strict non-wrapping horizontal block for 5 icons */
+        .st-key-mobile_bottom_dock [data-testid="stHorizontalBlock"],
+        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 8px !important;
+            gap: 6px !important;
             align-items: center !important;
             justify-content: space-around !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Strict 20% column sizing that overrides Streamlit 100% column collapse */
+        .st-key-mobile_bottom_dock [data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) > [data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) > div {
+            display: flex !important;
+            width: calc(20% - 5px) !important;
+            min-width: 0 !important;
+            max-width: calc(20% - 5px) !important;
+            flex: 1 1 calc(20% - 5px) !important;
+            flex-basis: calc(20% - 5px) !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        .st-key-mobile_bottom_dock .stButton,
+        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) .stButton {
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
         }
 
-        .st-key-mobile_bottom_dock [data-testid="column"] {
-            flex: 1 1 0 !important;
-            min-width: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-
-        .st-key-mobile_bottom_dock .stButton {
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        .st-key-mobile_bottom_dock .stButton > button {
+        /* Neutral Base Style for all 5 Mobile Dock Buttons */
+        .st-key-mobile_bottom_dock .stButton > button,
+        button[key^="mob_btn_"] {
             width: 100% !important;
             height: 48px !important;
             min-height: 48px !important;
             max-height: 48px !important;
             border-radius: 14px !important;
-            font-size: 1.42rem !important;
+            font-size: 1.40rem !important;
             line-height: 1 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             padding: 0 !important;
             margin: 0 !important;
-            background: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid rgba(255, 255, 255, 0.09) !important;
+            background: rgba(30, 41, 59, 0.75) !important;
+            background-color: rgba(30, 41, 59, 0.75) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
             color: #94A3B8 !important;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            transition: all 0.18s ease !important;
             -webkit-tap-highlight-color: transparent !important;
+            box-shadow: none !important;
         }
 
-        .st-key-mobile_bottom_dock .stButton > button:active {
+        .st-key-mobile_bottom_dock .stButton > button:active,
+        button[key^="mob_btn_"]:active {
             transform: scale(0.90) !important;
         }
 
+        /* Active Button Highlight (Electric Blue / Indigo - NO RED!) */
         .st-key-mobile_bottom_dock .stButton > button[kind="primary"],
-        .st-key-mobile_bottom_dock .stButton > button[data-testid="stBaseButton-primary"] {
-            background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%) !important;
+        .st-key-mobile_bottom_dock [data-testid="stBaseButton-primary"],
+        button[key^="mob_btn_"][kind="primary"],
+        button[key^="mob_btn_"][data-testid="stBaseButton-primary"] {
+            background: linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%) !important;
+            background-color: #2563EB !important;
             border: 1px solid #93C5FD !important;
             color: #FFFFFF !important;
             box-shadow: 0 0 16px rgba(59, 130, 246, 0.6), 0 2px 10px rgba(99, 102, 241, 0.4) !important;
             transform: translateY(-2px) !important;
+        }
+
+        /* Elevate Streamlit Cloud Manage App button so it doesn't block the bottom navigation */
+        [data-testid="manage-app-button"],
+        div:has(> [data-testid="manage-app-button"]),
+        div[class*="viewerBadge_container"] {
+            bottom: 68px !important;
         }
     }
 </style>

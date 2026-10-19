@@ -79,6 +79,35 @@ def init_db():
     except Exception:
         pass
 
+    # Auto-seed default candidate profile if resumes table is empty
+    try:
+        cursor.execute("SELECT COUNT(*) FROM resumes")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            sample_path = Path(__file__).parent / "sample_resume.txt"
+            if sample_path.exists():
+                import resume_parser
+                with open(sample_path, "r", encoding="utf-8") as f:
+                    sample_raw = f.read()
+                parsed = resume_parser.parse_resume_text(sample_raw, "sample_resume.txt")
+                cursor.execute("""
+                    INSERT INTO resumes (name, email, phone, skills, experience, education, raw_text, location, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, (
+                    parsed["name"],
+                    parsed["email"],
+                    parsed["phone"],
+                    json.dumps(parsed["skills"]),
+                    parsed["experience"],
+                    parsed["education"],
+                    parsed["raw_text"],
+                    parsed.get("location", "")
+                ))
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', ?)", (parsed.get("location", ""),))
+                conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
 # Resume operations
