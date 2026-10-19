@@ -328,20 +328,15 @@ st.markdown("""
             margin: 0.12rem !important;
         }
 
-        /* Mobile Hamburger Drawer Control - Positioned cleanly under Dynamic Island / Notch */
-        [data-testid="stSidebarCollapsedControl"] {
-            background: #1E3A8A !important;
-            color: #FFFFFF !important;
-            border-radius: 14px !important;
-            padding: 6px !important;
-            box-shadow: 0 4px 14px rgba(30, 58, 138, 0.35) !important;
-            top: max(0.65rem, calc(env(safe-area-inset-top) + 0.30rem)) !important;
-            left: max(0.65rem, env(safe-area-inset-left)) !important;
-            z-index: 9999 !important;
-        }
-        [data-testid="stSidebarCollapsedControl"] svg {
-            fill: #FFFFFF !important;
-            stroke: #FFFFFF !important;
+        /* Mobile: Sidebar Toggle Control hidden since bottom dock handles navigation */
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         /* Drawer navigation items */
@@ -483,10 +478,53 @@ st.markdown("""
             -webkit-tap-highlight-color: transparent !important;
         }
 
-        /* Hide the native radio circle so only the icon appears */
+        /* Completely HIDE all radio circles, dots, toggle controls, and inputs inside dock */
+        .st-key-mob_nav_radio label > div:not(:has([data-testid="stMarkdownContainer"])),
+        .st-key-mob_nav_radio label > div:first-child:not(:has([data-testid="stMarkdownContainer"])),
+        .st-key-mob_nav_radio label > div:not(:last-child),
+        .st-key-mob_nav_radio label > span,
+        .st-key-mob_nav_radio input,
+        .st-key-mob_nav_radio input[type="radio"],
+        .st-key-mob_nav_radio div[role="radiogroup"] input,
+        .st-key-mob_nav_radio [data-baseweb="radio"] > div:first-child,
+        .st-key-mob_nav_radio [data-baseweb="radio"] > div:first-of-type,
         .st-key-mob_nav_radio div[role="radiogroup"] > label > div:first-child,
-        .st-key-mobile_bottom_dock div[role="radiogroup"] > label > div:first-child {
+        .st-key-mob_nav_radio div[role="radiogroup"] > label > div:first-of-type,
+        .st-key-mob_nav_radio [data-testid="stRadioButtonCustom"],
+        .st-key-mob_nav_radio svg,
+        .st-key-mobile_bottom_dock svg,
+        .st-key-mobile_bottom_dock label > div:not(:has([data-testid="stMarkdownContainer"])),
+        .st-key-mobile_bottom_dock input {
             display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            opacity: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            pointer-events: none !important;
+            position: absolute !important;
+        }
+
+        /* Ensure ONLY the markdown container holding the icon is visible and centered */
+        .st-key-mob_nav_radio label [data-testid="stMarkdownContainer"],
+        .st-key-mobile_bottom_dock label [data-testid="stMarkdownContainer"] {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Hide top sidebar toggle control on mobile */
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"] {
+            display: none !important;
+            visibility: hidden !important;
         }
 
         /* Clean font styling for the emoji icons */
