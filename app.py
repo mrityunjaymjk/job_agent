@@ -524,11 +524,19 @@ st.markdown("""
             transform: translateY(-2px) !important;
         }
 
-        /* Elevate Streamlit Cloud Manage App button so it doesn't block the bottom navigation */
+        /* Completely HIDE and REMOVE Streamlit Cloud Manage App button and viewer badge */
         [data-testid="manage-app-button"],
         div:has(> [data-testid="manage-app-button"]),
-        div[class*="viewerBadge_container"] {
-            bottom: 68px !important;
+        div[class*="viewerBadge_container"],
+        .viewerBadge_container,
+        footer,
+        header [data-testid="stToolbar"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            height: 0 !important;
+            width: 0 !important;
         }
     }
 </style>
