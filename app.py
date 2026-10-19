@@ -703,12 +703,37 @@ if "selected_job" not in st.session_state:
     st.session_state.selected_job = None
 if "cached_jobs" not in st.session_state:
     st.session_state.cached_jobs = db.get_all_jobs()
-if "current_page" not in st.session_state:
+NAV_OPTIONS = ["📄 Resume Profile", "🔍 Job Discovery", "🎯 Match & Co-Pilot", "📊 Application Tracker", "⚙️ Settings"]
+NAV_ICONS = ["📄", "🔍", "🎯", "📊", "⚙️"]
+
+if "current_page" not in st.session_state or st.session_state.current_page not in NAV_OPTIONS:
     st.session_state.current_page = "📄 Resume Profile"
 
 # Handle pending navigation redirect before the radio widget is instantiated
 if "nav_redirect" in st.session_state:
     st.session_state.current_page = st.session_state.pop("nav_redirect")
+
+# Synchronize session state keys with current_page before widgets render
+curr_page = st.session_state.current_page
+curr_icon = NAV_ICONS[NAV_OPTIONS.index(curr_page)]
+
+if "sidebar_nav" not in st.session_state or st.session_state.sidebar_nav != curr_page:
+    st.session_state.sidebar_nav = curr_page
+
+if "mob_nav_radio" not in st.session_state or st.session_state.mob_nav_radio != curr_icon:
+    st.session_state.mob_nav_radio = curr_icon
+
+def _on_sidebar_nav_change():
+    new_page = st.session_state.sidebar_nav
+    st.session_state.current_page = new_page
+    st.session_state.mob_nav_radio = NAV_ICONS[NAV_OPTIONS.index(new_page)]
+
+def _on_mob_nav_change():
+    icon = st.session_state.mob_nav_radio
+    if icon in NAV_ICONS:
+        new_page = NAV_OPTIONS[NAV_ICONS.index(icon)]
+        st.session_state.current_page = new_page
+        st.session_state.sidebar_nav = new_page
 
 # Sidebar Navigation
 with st.sidebar:
@@ -734,15 +759,13 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    NAV_OPTIONS = ["📄 Resume Profile", "🔍 Job Discovery", "🎯 Match & Co-Pilot", "📊 Application Tracker", "⚙️ Settings"]
-    curr_idx = NAV_OPTIONS.index(st.session_state.current_page) if st.session_state.current_page in NAV_OPTIONS else 0
-    page = st.radio(
+    st.radio(
         "Navigation",
         NAV_OPTIONS,
-        index=curr_idx,
+        key="sidebar_nav",
+        on_change=_on_sidebar_nav_change,
         label_visibility="collapsed"
     )
-    st.session_state.current_page = page
     
     # Active Profile Card in sidebar
     active_resume = db.get_active_resume()
@@ -835,22 +858,17 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ================= MOBILE BOTTOM NAVIGATION DOCK =================
-NAV_ICONS = ["📄", "🔍", "🎯", "📊", "⚙️"]
-curr_idx = NAV_OPTIONS.index(st.session_state.current_page) if st.session_state.current_page in NAV_OPTIONS else 0
-
 with st.container(key="mobile_bottom_dock"):
-    selected_icon = st.radio(
+    st.radio(
         "Mobile Navigation",
         NAV_ICONS,
-        index=curr_idx,
+        key="mob_nav_radio",
+        on_change=_on_mob_nav_change,
         horizontal=True,
-        label_visibility="collapsed",
-        key="mob_nav_radio"
+        label_visibility="collapsed"
     )
-    selected_idx = NAV_ICONS.index(selected_icon) if selected_icon in NAV_ICONS else 0
-    if selected_idx != curr_idx:
-        st.session_state.current_page = NAV_OPTIONS[selected_idx]
-        st.rerun()
+
+page = st.session_state.current_page
 
 # Clean Mobile UI & Hide Streamlit Cloud parent Manage app button via script
 import streamlit.components.v1 as components
