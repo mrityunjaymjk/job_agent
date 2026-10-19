@@ -415,6 +415,7 @@ st.markdown("""
     /* Desktop: Hide Mobile Bottom Navigation Dock */
     @media (min-width: 769px) {
         .st-key-mobile_bottom_dock,
+        .st-key-mob_nav_radio,
         div:has(> div > [data-testid="stHorizontalBlock"] button[key^="mob_btn_"]) {
             display: none !important;
         }
@@ -427,8 +428,8 @@ st.markdown("""
         }
 
         .st-key-mobile_bottom_dock,
-        div[class*="st-key-mobile_bottom_dock"],
-        div:has(> div > [data-testid="stHorizontalBlock"] button[key^="mob_btn_"]) {
+        .st-key-mob_nav_radio,
+        div[class*="st-key-mobile_bottom_dock"] {
             display: block !important;
             position: fixed !important;
             bottom: 0 !important;
@@ -436,92 +437,83 @@ st.markdown("""
             right: 0 !important;
             width: 100vw !important;
             max-width: 100vw !important;
-            background: rgba(15, 23, 42, 0.95) !important;
+            background: rgba(15, 23, 42, 0.96) !important;
             backdrop-filter: blur(24px) saturate(180%) !important;
             -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
-            padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.14) !important;
+            padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) 10px !important;
             margin: 0 !important;
             z-index: 999999 !important;
             box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5) !important;
         }
 
-        /* Strict non-wrapping horizontal block for 5 icons */
-        .st-key-mobile_bottom_dock [data-testid="stHorizontalBlock"],
-        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) {
+        /* Strict single horizontal row flexbox for 5 tabs */
+        .st-key-mob_nav_radio div[role="radiogroup"],
+        .st-key-mobile_bottom_dock div[role="radiogroup"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 6px !important;
             align-items: center !important;
             justify-content: space-around !important;
             width: 100% !important;
             max-width: 100% !important;
+            gap: 6px !important;
             margin: 0 !important;
             padding: 0 !important;
         }
 
-        /* Strict 20% column sizing that overrides Streamlit 100% column collapse */
-        .st-key-mobile_bottom_dock [data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) > [data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) > div {
-            display: flex !important;
-            width: calc(20% - 5px) !important;
+        /* Each segment: 1/5th equal width, touch-friendly icon tab */
+        .st-key-mob_nav_radio div[role="radiogroup"] > label,
+        .st-key-mobile_bottom_dock div[role="radiogroup"] > label {
+            flex: 1 1 0px !important;
             min-width: 0 !important;
-            max-width: calc(20% - 5px) !important;
-            flex: 1 1 calc(20% - 5px) !important;
-            flex-basis: calc(20% - 5px) !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-
-        .st-key-mobile_bottom_dock .stButton,
-        div[data-testid="stHorizontalBlock"]:has(button[key^="mob_btn_"]) .stButton {
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        /* Neutral Base Style for all 5 Mobile Dock Buttons */
-        .st-key-mobile_bottom_dock .stButton > button,
-        button[key^="mob_btn_"] {
-            width: 100% !important;
             height: 48px !important;
             min-height: 48px !important;
             max-height: 48px !important;
             border-radius: 14px !important;
-            font-size: 1.40rem !important;
-            line-height: 1 !important;
+            background: rgba(30, 41, 59, 0.70) !important;
+            border: 1px solid rgba(255, 255, 255, 0.10) !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             padding: 0 !important;
             margin: 0 !important;
-            background: rgba(30, 41, 59, 0.75) !important;
-            background-color: rgba(30, 41, 59, 0.75) !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            color: #94A3B8 !important;
-            transition: all 0.18s ease !important;
+            cursor: pointer !important;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
             -webkit-tap-highlight-color: transparent !important;
-            box-shadow: none !important;
         }
 
-        .st-key-mobile_bottom_dock .stButton > button:active,
-        button[key^="mob_btn_"]:active {
-            transform: scale(0.90) !important;
+        /* Hide the native radio circle so only the icon appears */
+        .st-key-mob_nav_radio div[role="radiogroup"] > label > div:first-child,
+        .st-key-mobile_bottom_dock div[role="radiogroup"] > label > div:first-child {
+            display: none !important;
         }
 
-        /* Active Button Highlight (Electric Blue / Indigo - NO RED!) */
-        .st-key-mobile_bottom_dock .stButton > button[kind="primary"],
-        .st-key-mobile_bottom_dock [data-testid="stBaseButton-primary"],
-        button[key^="mob_btn_"][kind="primary"],
-        button[key^="mob_btn_"][data-testid="stBaseButton-primary"] {
+        /* Clean font styling for the emoji icons */
+        .st-key-mob_nav_radio div[role="radiogroup"] > label [data-testid="stMarkdownContainer"] p,
+        .st-key-mobile_bottom_dock div[role="radiogroup"] > label [data-testid="stMarkdownContainer"] p {
+            font-size: 1.50rem !important;
+            line-height: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        /* Active Selected Tab: Glowing Electric Blue pill */
+        .st-key-mob_nav_radio div[role="radiogroup"] > label:has(input:checked),
+        .st-key-mobile_bottom_dock div[role="radiogroup"] > label:has(input:checked) {
             background: linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%) !important;
             background-color: #2563EB !important;
             border: 1px solid #93C5FD !important;
-            color: #FFFFFF !important;
             box-shadow: 0 0 16px rgba(59, 130, 246, 0.6), 0 2px 10px rgba(99, 102, 241, 0.4) !important;
             transform: translateY(-2px) !important;
+        }
+
+        .st-key-mob_nav_radio div[role="radiogroup"] > label:active,
+        .st-key-mobile_bottom_dock div[role="radiogroup"] > label:active {
+            transform: scale(0.92) !important;
         }
 
         /* Completely HIDE and REMOVE Streamlit Cloud Manage App button and viewer badge */
@@ -775,43 +767,41 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ================= MOBILE BOTTOM NAVIGATION DOCK =================
+NAV_ICONS = ["📄", "🔍", "🎯", "📊", "⚙️"]
+curr_idx = NAV_OPTIONS.index(st.session_state.current_page) if st.session_state.current_page in NAV_OPTIONS else 0
+
 with st.container(key="mobile_bottom_dock"):
-    mb_c1, mb_c2, mb_c3, mb_c4, mb_c5 = st.columns(5)
-    
-    with mb_c1:
-        is_active = (st.session_state.current_page == "📄 Resume Profile")
-        if st.button("📄", key="mob_btn_resume", help="Resume Profile", type="primary" if is_active else "secondary", use_container_width=True):
-            if not is_active:
-                st.session_state.current_page = "📄 Resume Profile"
-                st.rerun()
+    selected_icon = st.radio(
+        "Mobile Navigation",
+        NAV_ICONS,
+        index=curr_idx,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="mob_nav_radio"
+    )
+    selected_idx = NAV_ICONS.index(selected_icon) if selected_icon in NAV_ICONS else 0
+    if selected_idx != curr_idx:
+        st.session_state.current_page = NAV_OPTIONS[selected_idx]
+        st.rerun()
 
-    with mb_c2:
-        is_active = (st.session_state.current_page == "🔍 Job Discovery")
-        if st.button("🔍", key="mob_btn_jobs", help="Job Discovery", type="primary" if is_active else "secondary", use_container_width=True):
-            if not is_active:
-                st.session_state.current_page = "🔍 Job Discovery"
-                st.rerun()
-
-    with mb_c3:
-        is_active = (st.session_state.current_page == "🎯 Match & Co-Pilot")
-        if st.button("🎯", key="mob_btn_match", help="Match & Co-Pilot", type="primary" if is_active else "secondary", use_container_width=True):
-            if not is_active:
-                st.session_state.current_page = "🎯 Match & Co-Pilot"
-                st.rerun()
-
-    with mb_c4:
-        is_active = (st.session_state.current_page == "📊 Application Tracker")
-        if st.button("📊", key="mob_btn_apps", help="Application Tracker", type="primary" if is_active else "secondary", use_container_width=True):
-            if not is_active:
-                st.session_state.current_page = "📊 Application Tracker"
-                st.rerun()
-
-    with mb_c5:
-        is_active = (st.session_state.current_page == "⚙️ Settings")
-        if st.button("⚙️", key="mob_btn_settings", help="Settings", type="primary" if is_active else "secondary", use_container_width=True):
-            if not is_active:
-                st.session_state.current_page = "⚙️ Settings"
-                st.rerun()
+# Attempt to hide Streamlit Cloud parent Manage app button via script
+import streamlit.components.v1 as components
+components.html("""
+<script>
+function hideCloudBadges() {
+    try {
+        var doc = window.parent.document;
+        var btn = doc.querySelector('[data-testid="manage-app-button"]');
+        if (btn) btn.style.display = 'none';
+        var badge = doc.querySelector('[class*="viewerBadge_container"]');
+        if (badge) badge.style.display = 'none';
+    } catch(e) {}
+}
+hideCloudBadges();
+setTimeout(hideCloudBadges, 800);
+setTimeout(hideCloudBadges, 2000);
+</script>
+""", height=0, width=0)
 
 # ================= PAGE 1: RESUME PROFILE =================
 if page == "📄 Resume Profile":
