@@ -411,6 +411,95 @@ st.markdown("""
             font-size: 1.48rem !important;
         }
     }
+
+    /* Desktop: Hide Mobile Bottom Navigation Dock */
+    @media (min-width: 769px) {
+        .st-key-mobile_bottom_dock {
+            display: none !important;
+        }
+    }
+
+    /* Mobile: Native Fixed Bottom Navigation Bar (Dock) */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+        }
+
+        .st-key-mobile_bottom_dock {
+            display: block !important;
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            background: rgba(15, 23, 42, 0.94) !important;
+            backdrop-filter: blur(24px) saturate(180%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px !important;
+            margin: 0 !important;
+            z-index: 999999 !important;
+            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45) !important;
+        }
+
+        .st-key-mobile_bottom_dock [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 8px !important;
+            align-items: center !important;
+            justify-content: space-around !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .st-key-mobile_bottom_dock [data-testid="column"] {
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        .st-key-mobile_bottom_dock .stButton {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .st-key-mobile_bottom_dock .stButton > button {
+            width: 100% !important;
+            height: 48px !important;
+            min-height: 48px !important;
+            max-height: 48px !important;
+            border-radius: 14px !important;
+            font-size: 1.42rem !important;
+            line-height: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.09) !important;
+            color: #94A3B8 !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            -webkit-tap-highlight-color: transparent !important;
+        }
+
+        .st-key-mobile_bottom_dock .stButton > button:active {
+            transform: scale(0.90) !important;
+        }
+
+        .st-key-mobile_bottom_dock .stButton > button[kind="primary"],
+        .st-key-mobile_bottom_dock .stButton > button[data-testid="stBaseButton-primary"] {
+            background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%) !important;
+            border: 1px solid #93C5FD !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 0 16px rgba(59, 130, 246, 0.6), 0 2px 10px rgba(99, 102, 241, 0.4) !important;
+            transform: translateY(-2px) !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -645,6 +734,45 @@ with st.sidebar:
             <div style="font-size: 0.68rem; color: #64748B; margin-top: 6px; line-height: 1.3;">In Chrome or Safari, tap ⋮ / Share ➡️ <i>Install app</i> (or <i>Add to Home</i>) for full-screen PWA!</div>
         </div>
         """, unsafe_allow_html=True)
+
+# ================= MOBILE BOTTOM NAVIGATION DOCK =================
+with st.container(key="mobile_bottom_dock"):
+    mb_c1, mb_c2, mb_c3, mb_c4, mb_c5 = st.columns(5)
+    
+    with mb_c1:
+        is_active = (st.session_state.current_page == "📄 Resume Profile")
+        if st.button("📄", key="mob_btn_resume", help="Resume Profile", type="primary" if is_active else "secondary", use_container_width=True):
+            if not is_active:
+                st.session_state.current_page = "📄 Resume Profile"
+                st.rerun()
+
+    with mb_c2:
+        is_active = (st.session_state.current_page == "🔍 Job Discovery")
+        if st.button("🔍", key="mob_btn_jobs", help="Job Discovery", type="primary" if is_active else "secondary", use_container_width=True):
+            if not is_active:
+                st.session_state.current_page = "🔍 Job Discovery"
+                st.rerun()
+
+    with mb_c3:
+        is_active = (st.session_state.current_page == "🎯 Match & Co-Pilot")
+        if st.button("🎯", key="mob_btn_match", help="Match & Co-Pilot", type="primary" if is_active else "secondary", use_container_width=True):
+            if not is_active:
+                st.session_state.current_page = "🎯 Match & Co-Pilot"
+                st.rerun()
+
+    with mb_c4:
+        is_active = (st.session_state.current_page == "📊 Application Tracker")
+        if st.button("📊", key="mob_btn_apps", help="Application Tracker", type="primary" if is_active else "secondary", use_container_width=True):
+            if not is_active:
+                st.session_state.current_page = "📊 Application Tracker"
+                st.rerun()
+
+    with mb_c5:
+        is_active = (st.session_state.current_page == "⚙️ Settings")
+        if st.button("⚙️", key="mob_btn_settings", help="Settings", type="primary" if is_active else "secondary", use_container_width=True):
+            if not is_active:
+                st.session_state.current_page = "⚙️ Settings"
+                st.rerun()
 
 # ================= PAGE 1: RESUME PROFILE =================
 if page == "📄 Resume Profile":
