@@ -71,21 +71,42 @@ def init_db():
     """)
 
     conn.commit()
+    
+    # Safe migration: add location column to resumes if missing
+    try:
+        cursor.execute("ALTER TABLE resumes ADD COLUMN location TEXT")
+        conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
 # Resume operations
-def save_resume(name: str, email: str, phone: str, skills: List[str], experience: str, education: str, raw_text: str) -> int:
+def save_resume(name: str, email: str, phone: str, skills: List[str], experience: str, education: str, raw_text: str, location: str = "") -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
     # Mark old resumes as inactive
     cursor.execute("UPDATE resumes SET is_active = 0")
-    cursor.execute("""
-        INSERT INTO resumes (name, email, phone, skills, experience, education, raw_text, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    """, (name, email, phone, json.dumps(skills), experience, education, raw_text))
+    try:
+        cursor.execute("""
+            INSERT INTO resumes (name, email, phone, skills, experience, education, raw_text, location, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """, (name, email, phone, json.dumps(skills), experience, education, raw_text, location))
+    except sqlite3.OperationalError:
+        try:
+            cursor.execute("ALTER TABLE resumes ADD COLUMN location TEXT")
+        except Exception:
+            pass
+        cursor.execute("""
+            INSERT INTO resumes (name, email, phone, skills, experience, education, raw_text, location, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """, (name, email, phone, json.dumps(skills), experience, education, raw_text, location))
+        
     resume_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    if location:
+        set_setting("user_location", location)
     return resume_id
 
 def get_active_resume() -> Optional[Dict[str, Any]]:
@@ -103,16 +124,29 @@ def get_active_resume() -> Optional[Dict[str, Any]]:
         return data
     return None
 
-def update_resume_profile(resume_id: int, name: str, email: str, phone: str, skills: List[str]):
+def update_resume_profile(resume_id: int, name: str, email: str, phone: str, skills: List[str], location: str = ""):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE resumes 
-        SET name = ?, email = ?, phone = ?, skills = ?
-        WHERE id = ?
-    """, (name, email, phone, json.dumps(skills), resume_id))
+    try:
+        cursor.execute("""
+            UPDATE resumes 
+            SET name = ?, email = ?, phone = ?, skills = ?, location = ?
+            WHERE id = ?
+        """, (name, email, phone, json.dumps(skills), location, resume_id))
+    except sqlite3.OperationalError:
+        try:
+            cursor.execute("ALTER TABLE resumes ADD COLUMN location TEXT")
+        except Exception:
+            pass
+        cursor.execute("""
+            UPDATE resumes 
+            SET name = ?, email = ?, phone = ?, skills = ?, location = ?
+            WHERE id = ?
+        """, (name, email, phone, json.dumps(skills), location, resume_id))
     conn.commit()
     conn.close()
+    if location:
+        set_setting("user_location", location)
 
 # Job operations
 def save_jobs(jobs_list: List[Dict[str, Any]]) -> int:

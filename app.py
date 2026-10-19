@@ -597,6 +597,7 @@ with st.sidebar:
                 <span style="background: rgba(59, 130, 246, 0.12); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">
                     🛠️ {len(cand_skills)} Skills
                 </span>
+                {f'<span style="background: rgba(16, 185, 129, 0.12); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">📍 {active_resume.get("location")}</span>' if active_resume.get("location") else ''}
                 <span style="background: rgba(168, 85, 247, 0.12); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">
                     ⚡ Auto-Fill Ready
                 </span>
@@ -652,47 +653,80 @@ if page == "📄 Resume Profile":
     col1, col2 = st.columns([1.2, 1])
     
     with col1:
-        st.subheader("Upload Resume File")
-        uploaded_file = st.file_uploader(
-            "Upload your PDF, DOCX, or TXT resume",
-            type=["pdf", "docx", "txt"],
-            help="Your resume will be parsed locally. Contact info and skills are indexed for matching."
-        )
+        st.subheader("Add or Update Resume")
+        tab_upload, tab_paste = st.tabs(["📁 Upload Resume File", "📝 Paste Resume Text"])
         
-        col_load_demo, col_or = st.columns([1, 1])
-        with col_load_demo:
-            if st.button("🚀 Load Sample Developer Resume", use_container_width=True):
-                sample_path = Path(__file__).parent / "sample_resume.txt"
-                if sample_path.exists():
-                    with open(sample_path, "r", encoding="utf-8") as f:
-                        parsed = resume_parser.parse_resume(f, "sample_resume.txt")
-                        db.save_resume(
+        with tab_upload:
+            uploaded_file = st.file_uploader(
+                "Upload your PDF, DOCX, or TXT resume",
+                type=["pdf", "docx", "txt"],
+                help="Your resume will be parsed locally. Skills tables, contact info, and experience are extracted."
+            )
+            
+            col_load_demo, col_or = st.columns([1, 1])
+            with col_load_demo:
+                if st.button("🚀 Load Sample Developer Resume", use_container_width=True):
+                    sample_path = Path(__file__).parent / "sample_resume.txt"
+                    if sample_path.exists():
+                        with open(sample_path, "r", encoding="utf-8") as f:
+                            parsed = resume_parser.parse_resume(f, "sample_resume.txt")
+                            db.save_resume(
+                                name=parsed["name"],
+                                email=parsed["email"],
+                                phone=parsed["phone"],
+                                skills=parsed["skills"],
+                                experience=parsed["experience"],
+                                education=parsed["education"],
+                                raw_text=parsed["raw_text"],
+                                location=parsed.get("location", "")
+                            )
+                            st.success("Loaded sample profile successfully!")
+                            st.rerun()
+
+            if uploaded_file is not None:
+                if st.button("⚡ Parse & Save Resume", type="primary", use_container_width=True):
+                    with st.spinner("Extracting candidate profile and skills..."):
+                        parsed = resume_parser.parse_resume(uploaded_file, uploaded_file.name)
+                        res_id = db.save_resume(
                             name=parsed["name"],
                             email=parsed["email"],
                             phone=parsed["phone"],
                             skills=parsed["skills"],
                             experience=parsed["experience"],
                             education=parsed["education"],
-                            raw_text=parsed["raw_text"]
+                            raw_text=parsed["raw_text"],
+                            location=parsed.get("location", "")
                         )
-                        st.success("Loaded sample profile successfully!")
+                        loc_msg = f" | 📍 {parsed['location']}" if parsed.get("location") else ""
+                        st.success(f"Resume saved! Extracted {len(parsed['skills'])} skills{loc_msg}.")
                         st.rerun()
 
-        if uploaded_file is not None:
-            if st.button("⚡ Parse & Save Resume", type="primary", use_container_width=True):
-                with st.spinner("Extracting candidate profile and skills..."):
-                    parsed = resume_parser.parse_resume(uploaded_file, uploaded_file.name)
-                    res_id = db.save_resume(
-                        name=parsed["name"],
-                        email=parsed["email"],
-                        phone=parsed["phone"],
-                        skills=parsed["skills"],
-                        experience=parsed["experience"],
-                        education=parsed["education"],
-                        raw_text=parsed["raw_text"]
-                    )
-                    st.success(f"Resume saved! Extracted {len(parsed['skills'])} skills.")
-                    st.rerun()
+        with tab_paste:
+            st.caption("Don't have the file handy? Simply paste your resume text below:")
+            pasted_text = st.text_area(
+                "Paste Resume Content",
+                height=220,
+                placeholder="Paste the full text of your resume here (including contact info, experience, skills list/table, and education)..."
+            )
+            if st.button("⚡ Parse & Save Pasted Resume", type="primary", use_container_width=True):
+                if pasted_text.strip():
+                    with st.spinner("Parsing resume details, skills, and sections..."):
+                        parsed = resume_parser.parse_resume_text(pasted_text.strip(), "Pasted Resume")
+                        res_id = db.save_resume(
+                            name=parsed["name"],
+                            email=parsed["email"],
+                            phone=parsed["phone"],
+                            skills=parsed["skills"],
+                            experience=parsed["experience"],
+                            education=parsed["education"],
+                            raw_text=parsed["raw_text"],
+                            location=parsed.get("location", "")
+                        )
+                        loc_msg = f" | 📍 {parsed['location']}" if parsed.get("location") else ""
+                        st.success(f"Resume saved! Extracted {len(parsed['skills'])} skills{loc_msg}.")
+                        st.rerun()
+                else:
+                    st.warning("Please paste your resume text before clicking parse.")
 
     with col2:
         st.subheader("Current Candidate Profile")
@@ -706,8 +740,11 @@ if page == "📄 Resume Profile":
                 with c_phone:
                     phone_input = st.text_input("Phone", value=active.get("phone", ""))
                 
+                loc_val = active.get("location", "") or db.get_setting("user_location", "")
+                location_input = st.text_input("Location / City & Country", value=loc_val, help="Used for matching regional jobs and auto-filling application forms")
+                
                 skills_list = active.get("skills", [])
-                st.write("**Extracted Skills:**")
+                st.write(f"**Extracted Skills ({len(skills_list)}):**")
                 skills_chips = " ".join([f'<span class="skill-chip">{s}</span>' for s in skills_list])
                 st.markdown(skills_chips, unsafe_allow_html=True)
                 
@@ -719,11 +756,11 @@ if page == "📄 Resume Profile":
                 
                 if st.button("Save Profile Changes"):
                     new_skills = [s.strip() for s in skills_edit.split(",") if s.strip()]
-                    db.update_resume_profile(active["id"], name_input, email_input, phone_input, new_skills)
+                    db.update_resume_profile(active["id"], name_input, email_input, phone_input, new_skills, location_input)
                     st.success("Profile updated!")
                     st.rerun()
         else:
-            st.info("No active resume. Please upload one or load the sample resume.")
+            st.info("No active resume. Please upload one, paste text, or load the sample resume.")
 
     st.divider()
     st.subheader("⚙️ Default Application Answers")
