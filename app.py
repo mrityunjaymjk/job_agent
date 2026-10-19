@@ -138,6 +138,10 @@ st.markdown("""
 
     /* Completely hide the radio button circle/dot */
     [data-testid="stSidebar"] label[data-testid="stRadioOption"] > div > div:not([data-testid="stMarkdownContainer"]),
+    [data-testid="stSidebar"] label[data-testid="stRadioOption"] > div > div:first-child,
+    [data-testid="stSidebar"] label[data-testid="stRadioOption"] div:has(+ [data-testid="stMarkdownContainer"]),
+    [data-testid="stSidebar"] [class*="e1dm8mpf4"],
+    [data-testid="stSidebar"] [class*="e1dm8mpf5"],
     [data-testid="stSidebar"] label[data-testid="stRadioOption"] span:first-child,
     [data-testid="stSidebar"] label[data-testid="stRadioOption"] input[type="radio"],
     [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
@@ -329,8 +333,13 @@ st.markdown("""
         }
 
         /* Mobile: Sidebar Toggle Control hidden since bottom dock handles navigation */
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapseButton"],
         [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"] {
+        [data-testid="collapsedControl"],
+        button[aria-label="Expand sidebar"],
+        button[aria-label="Collapse sidebar"],
+        button[aria-controls="stSidebar"] {
             display: none !important;
             visibility: hidden !important;
             width: 0 !important;
@@ -479,6 +488,11 @@ st.markdown("""
         }
 
         /* Completely HIDE all radio circles, dots, toggle controls, and inputs inside dock */
+        .st-key-mob_nav_radio [data-testid="stRadioOption"] > div > div:first-child,
+        .st-key-mob_nav_radio [data-testid="stRadioOption"] > div > *:not([data-testid="stMarkdownContainer"]),
+        .st-key-mob_nav_radio [data-testid="stRadioOption"] div:has(+ [data-testid="stMarkdownContainer"]),
+        .st-key-mob_nav_radio [class*="e1dm8mpf4"],
+        .st-key-mob_nav_radio [class*="e1dm8mpf5"],
         .st-key-mob_nav_radio label > div:not(:has([data-testid="stMarkdownContainer"])),
         .st-key-mob_nav_radio label > div:first-child:not(:has([data-testid="stMarkdownContainer"])),
         .st-key-mob_nav_radio label > div:not(:last-child),
@@ -492,6 +506,10 @@ st.markdown("""
         .st-key-mob_nav_radio div[role="radiogroup"] > label > div:first-of-type,
         .st-key-mob_nav_radio [data-testid="stRadioButtonCustom"],
         .st-key-mob_nav_radio svg,
+        .st-key-mobile_bottom_dock [data-testid="stRadioOption"] > div > div:first-child,
+        .st-key-mobile_bottom_dock [data-testid="stRadioOption"] > div > *:not([data-testid="stMarkdownContainer"]),
+        .st-key-mobile_bottom_dock [class*="e1dm8mpf4"],
+        .st-key-mobile_bottom_dock [class*="e1dm8mpf5"],
         .st-key-mobile_bottom_dock svg,
         .st-key-mobile_bottom_dock label > div:not(:has([data-testid="stMarkdownContainer"])),
         .st-key-mobile_bottom_dock input {
@@ -508,7 +526,9 @@ st.markdown("""
 
         /* Ensure ONLY the markdown container holding the icon is visible and centered */
         .st-key-mob_nav_radio label [data-testid="stMarkdownContainer"],
-        .st-key-mobile_bottom_dock label [data-testid="stMarkdownContainer"] {
+        .st-key-mob_nav_radio [data-testid="stRadioOption"] > div,
+        .st-key-mobile_bottom_dock label [data-testid="stMarkdownContainer"],
+        .st-key-mobile_bottom_dock [data-testid="stRadioOption"] > div {
             display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
@@ -518,13 +538,23 @@ st.markdown("""
             height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
+            text-align: center !important;
         }
 
-        /* Hide top sidebar toggle control on mobile */
+        /* Hide top sidebar toggle controls on mobile */
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapseButton"],
         [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"] {
+        [data-testid="collapsedControl"],
+        button[aria-label="Expand sidebar"],
+        button[aria-label="Collapse sidebar"],
+        button[aria-controls="stSidebar"] {
             display: none !important;
             visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         /* Clean font styling for the emoji icons */
@@ -822,22 +852,119 @@ with st.container(key="mobile_bottom_dock"):
         st.session_state.current_page = NAV_OPTIONS[selected_idx]
         st.rerun()
 
-# Attempt to hide Streamlit Cloud parent Manage app button via script
+# Clean Mobile UI & Hide Streamlit Cloud parent Manage app button via script
 import streamlit.components.v1 as components
 components.html("""
 <script>
-function hideCloudBadges() {
+function cleanMobileUI() {
     try {
         var doc = window.parent.document;
+        if (!doc) return;
+
+        // 1. Hide Streamlit Cloud badges & manage button
         var btn = doc.querySelector('[data-testid="manage-app-button"]');
         if (btn) btn.style.display = 'none';
         var badge = doc.querySelector('[class*="viewerBadge_container"]');
         if (badge) badge.style.display = 'none';
+
+        // 2. Hide Mobile Sidebar Expand/Collapse Toggle Controls
+        var selectorsToHide = [
+            '[data-testid="stExpandSidebarButton"]',
+            '[data-testid="stSidebarCollapseButton"]',
+            '[data-testid="stSidebarCollapsedControl"]',
+            '[data-testid="collapsedControl"]',
+            'button[aria-label="Expand sidebar"]',
+            'button[aria-label="Collapse sidebar"]'
+        ];
+        selectorsToHide.forEach(function(sel) {
+            doc.querySelectorAll(sel).forEach(function(el) {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+            });
+        });
+
+        // 3. Remove/Hide all radio toggle circles beside dock menu icons
+        var dockOptions = doc.querySelectorAll('.st-key-mob_nav_radio [data-testid="stRadioOption"], .st-key-mobile_bottom_dock [data-testid="stRadioOption"]');
+        dockOptions.forEach(function(opt) {
+            var allDivs = opt.querySelectorAll('div');
+            allDivs.forEach(function(d) {
+                var testId = d.getAttribute('data-testid');
+                if (testId === 'stMarkdownContainer' || d.querySelector('[data-testid="stMarkdownContainer"]')) {
+                    d.style.setProperty('display', 'flex', 'important');
+                    d.style.setProperty('align-items', 'center', 'important');
+                    d.style.setProperty('justify-content', 'center', 'important');
+                } else if (d.children.length <= 1) {
+                    d.style.setProperty('display', 'none', 'important');
+                    d.style.setProperty('visibility', 'hidden', 'important');
+                    d.style.setProperty('width', '0px', 'important');
+                    d.style.setProperty('height', '0px', 'important');
+                }
+            });
+        });
+
+        // 4. Inject global stylesheet into parent document head
+        var styleId = 'job-copilot-clean-dock-css';
+        if (!doc.getElementById(styleId)) {
+            var styleEl = doc.createElement('style');
+            styleEl.id = styleId;
+            styleEl.innerHTML = `
+                [data-testid="stExpandSidebarButton"],
+                [data-testid="stSidebarCollapseButton"],
+                [data-testid="stSidebarCollapsedControl"],
+                [data-testid="collapsedControl"],
+                button[aria-label="Expand sidebar"],
+                button[aria-label="Collapse sidebar"] {
+                    display: none !important;
+                    visibility: hidden !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                }
+                .st-key-mob_nav_radio [data-testid="stRadioOption"] > div > div:first-child,
+                .st-key-mob_nav_radio [data-testid="stRadioOption"] > div > *:not([data-testid="stMarkdownContainer"]),
+                .st-key-mob_nav_radio [data-testid="stRadioOption"] div:has(+ [data-testid="stMarkdownContainer"]),
+                .st-key-mob_nav_radio [class*="e1dm8mpf4"],
+                .st-key-mob_nav_radio [class*="e1dm8mpf5"],
+                .st-key-mobile_bottom_dock [data-testid="stRadioOption"] > div > div:first-child,
+                .st-key-mobile_bottom_dock [data-testid="stRadioOption"] > div > *:not([data-testid="stMarkdownContainer"]),
+                .st-key-mobile_bottom_dock [class*="e1dm8mpf4"],
+                .st-key-mobile_bottom_dock [class*="e1dm8mpf5"] {
+                    display: none !important;
+                    visibility: hidden !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    position: absolute !important;
+                }
+                .st-key-mob_nav_radio [data-testid="stMarkdownContainer"],
+                .st-key-mobile_bottom_dock [data-testid="stMarkdownContainer"] {
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    width: 100% !important;
+                    text-align: center !important;
+                }
+            `;
+            doc.head.appendChild(styleEl);
+        }
     } catch(e) {}
 }
-hideCloudBadges();
-setTimeout(hideCloudBadges, 800);
-setTimeout(hideCloudBadges, 2000);
+
+cleanMobileUI();
+setTimeout(cleanMobileUI, 200);
+setTimeout(cleanMobileUI, 600);
+setTimeout(cleanMobileUI, 1200);
+setTimeout(cleanMobileUI, 2500);
+
+try {
+    var targetNode = window.parent.document.body;
+    var observer = new MutationObserver(function() {
+        cleanMobileUI();
+    });
+    observer.observe(targetNode, { childList: true, subtree: true });
+} catch(e) {}
 </script>
 """, height=0, width=0)
 
