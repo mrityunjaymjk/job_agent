@@ -22,6 +22,7 @@ import importlib
 import db
 importlib.reload(db)
 import resume_parser
+importlib.reload(resume_parser)
 import job_scraper
 importlib.reload(job_scraper)
 import matcher
@@ -711,7 +712,15 @@ if page == "📄 Resume Profile":
             if st.button("⚡ Parse & Save Pasted Resume", type="primary", use_container_width=True):
                 if pasted_text.strip():
                     with st.spinner("Parsing resume details, skills, and sections..."):
-                        parsed = resume_parser.parse_resume_text(pasted_text.strip(), "Pasted Resume")
+                        if hasattr(resume_parser, "parse_resume_text"):
+                            parsed = resume_parser.parse_resume_text(pasted_text.strip(), "Pasted Resume")
+                        else:
+                            import io
+                            importlib.reload(resume_parser)
+                            if hasattr(resume_parser, "parse_resume_text"):
+                                parsed = resume_parser.parse_resume_text(pasted_text.strip(), "Pasted Resume")
+                            else:
+                                parsed = resume_parser.parse_resume(io.StringIO(pasted_text.strip()), "pasted_resume.txt")
                         res_id = db.save_resume(
                             name=parsed["name"],
                             email=parsed["email"],

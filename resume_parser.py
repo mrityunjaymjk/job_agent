@@ -295,5 +295,9 @@ def parse_resume(file_obj_or_path, filename: str) -> Dict[str, Any]:
         if hasattr(file_obj_or_path, 'read'):
             raw = file_obj_or_path.read()
             raw_text = raw.decode('utf-8', errors='ignore') if isinstance(raw, bytes) else str(raw)
+        elif isinstance(file_obj_or_path, str):
+            raw_text = file_obj_or_path
+        else:
+            raw_text = str(file_obj_or_path)
             
     return parse_resume_text(raw_text, filename)
