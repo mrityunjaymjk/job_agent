@@ -79,6 +79,44 @@ def init_db():
     except Exception:
         pass
 
+    # Auto-seed default candidate profile (Alex Morgan) if no active resume exists
+    try:
+        cursor.execute("SELECT id FROM resumes WHERE is_active = 1 LIMIT 1")
+        active = cursor.fetchone()
+        if not active:
+            cursor.execute("SELECT id FROM resumes WHERE name LIKE '%Alex Morgan%' ORDER BY id DESC LIMIT 1")
+            alex = cursor.fetchone()
+            if alex:
+                cursor.execute("UPDATE resumes SET is_active = 0")
+                cursor.execute("UPDATE resumes SET is_active = 1 WHERE id = ?", (alex[0],))
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', 'San Francisco, CA')")
+                conn.commit()
+            else:
+                sample_path = Path(__file__).parent / "sample_resume.txt"
+                if sample_path.exists():
+                    import resume_parser
+                    with open(sample_path, "r", encoding="utf-8") as f:
+                        sample_raw = f.read()
+                    parsed = resume_parser.parse_resume_text(sample_raw, "sample_resume.txt")
+                    cursor.execute("UPDATE resumes SET is_active = 0")
+                    cursor.execute("""
+                        INSERT INTO resumes (name, email, phone, skills, experience, education, raw_text, location, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """, (
+                        parsed["name"],
+                        parsed["email"],
+                        parsed["phone"],
+                        json.dumps(parsed["skills"]),
+                        parsed["experience"],
+                        parsed["education"],
+                        parsed["raw_text"],
+                        parsed.get("location", "San Francisco, CA")
+                    ))
+                    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', ?)", (parsed.get("location", "San Francisco, CA"),))
+                    conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
 # Resume operations
