@@ -57,6 +57,16 @@ def extract_text_from_pdf(file_bytes_or_path) -> str:
         page_text = page.extract_text()
         if page_text:
             text += page_text + "\n"
+        # Extract embedded hyperlink annotations
+        try:
+            if "/Annots" in page:
+                for annot in page["/Annots"]:
+                    obj = annot.get_object()
+                    if "/A" in obj and "/URI" in obj["/A"]:
+                        uri = str(obj["/A"]["/URI"])
+                        text += f" {uri} \n"
+        except Exception:
+            pass
     return text
 
 def extract_text_from_docx(file_bytes_or_path) -> str:
@@ -94,6 +104,14 @@ def extract_text_from_docx(file_bytes_or_path) -> str:
                 row_cells = [c.text.strip().replace('\n', ' ') for c in row.cells if c.text.strip()]
                 if row_cells:
                     full_text.append(" | ".join(row_cells))
+
+    # Extract embedded hyperlink URLs from DOCX package relationships
+    try:
+        for rel in doc.part.rels.values():
+            if "hyperlink" in getattr(rel, "reltype", "").lower() and getattr(rel, "target_ref", None):
+                full_text.append(f" {rel.target_ref} ")
+    except Exception:
+        pass
 
     return "\n".join(full_text)
 
@@ -136,15 +154,22 @@ def extract_location(text: str) -> str:
 
 def extract_links(text: str) -> Dict[str, str]:
     links = {}
-    linkedin = re.search(r'(https?://(?:www\.)?linkedin\.com/in/[\w-]+)', text, re.I)
-    if linkedin:
-        links['linkedin'] = linkedin.group(0)
-    github = re.search(r'(https?://(?:www\.)?github\.com/[\w-]+)', text, re.I)
-    if github:
-        links['github'] = github.group(0)
-    portfolio = re.search(r'(https?://(?:www\.)?[\w-]+\.(?:com|dev|io|me|org)[\w/-]*)', text, re.I)
-    if portfolio and 'linkedin' not in portfolio.group(0) and 'github' not in portfolio.group(0):
-        links['portfolio'] = portfolio.group(0)
+    # 1. LinkedIn (with or without https://)
+    linkedin = re.search(r'(?:https?://)?(?:www\.)?linkedin\.com/in/([A-Za-z0-9_-]+)', text, re.I)
+    if linkedin and linkedin.group(1).lower() not in ["in", "jobs", "feed", "posts"]:
+        links['linkedin'] = f"https://linkedin.com/in/{linkedin.group(1)}"
+
+    # 2. GitHub (with or without https://)
+    github = re.search(r'(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9_-]+)', text, re.I)
+    if github and github.group(1).lower() not in ["join", "login", "features", "explore", "about", "pricing", "topics"]:
+        links['github'] = f"https://github.com/{github.group(1)}"
+
+    # 3. Portfolio / Personal Site
+    portfolio = re.search(r'(https?://(?:www\.)?[A-Za-z0-9-]+\.(?:com|dev|io|me|org|tech|app|in)(?:/[A-Za-z0-9_/-]*)?)', text, re.I)
+    if portfolio:
+        p_url = portfolio.group(0)
+        if 'linkedin.com' not in p_url.lower() and 'github.com' not in p_url.lower():
+            links['portfolio'] = p_url
     return links
 
 def extract_skills_from_section(skills_raw: str) -> List[str]:

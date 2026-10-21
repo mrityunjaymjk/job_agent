@@ -1141,9 +1141,10 @@ if page == "📄 Resume Profile":
         WORK_AUTH_OPTIONS.append(curr_auth)
     auth_idx = WORK_AUTH_OPTIONS.index(curr_auth)
 
+    links_pref = db.get_candidate_links(active_resume)
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
-        years_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "5+ years"), key="ans_years_exp")
+        years_exp = st.text_input("Years of Experience", value=db.get_setting("years_exp", "4+ years"), key="ans_years_exp")
     with col_p2:
         expected_salary = st.text_input("Expected Salary / Rate", value=db.get_setting("expected_salary", "$110,000 - $140,000 / yr"), key="ans_expected_salary")
     with col_p3:
@@ -1153,18 +1154,26 @@ if page == "📄 Resume Profile":
     with col_p4:
         work_auth = st.selectbox("Work Authorization", WORK_AUTH_OPTIONS, index=auth_idx, key="ans_work_auth")
     with col_p5:
-        linkedin_url = st.text_input("LinkedIn Profile URL", value=db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"), key="ans_linkedin_url")
+        linkedin_url = st.text_input("LinkedIn Profile URL", value=links_pref.get("linkedin") or "https://linkedin.com/in/", key="ans_linkedin_url")
     with col_p6:
-        portfolio_url = st.text_input("Portfolio / GitHub URL", value=db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev"), key="ans_portfolio_url")
+        github_url = st.text_input("GitHub Profile URL", value=links_pref.get("github") or "https://github.com/", key="ans_github_url")
         
+    col_p7, col_p8 = st.columns([1.5, 1.5])
+    with col_p7:
+        portfolio_url = st.text_input("Portfolio / Website URL", value=links_pref.get("portfolio") or "", key="ans_portfolio_url", placeholder="https://myportfolio.dev")
+    with col_p8:
+        user_loc = st.text_input("Current Location", value=db.get_setting("user_location", active_resume.get("location", "Pune, India") if active_resume else "Pune, India"), key="ans_user_location")
+
     if st.button("Save Application Preferences", type="primary", key="btn_save_app_prefs"):
         db.set_setting("years_exp", years_exp.strip())
         db.set_setting("expected_salary", expected_salary.strip())
         db.set_setting("notice_period", notice_period)
         db.set_setting("work_auth", work_auth)
         db.set_setting("linkedin_url", linkedin_url.strip())
+        db.set_setting("github_url", github_url.strip())
         db.set_setting("portfolio_url", portfolio_url.strip())
-        st.success("Application preferences & LinkedIn profile saved successfully!")
+        db.set_setting("user_location", user_loc.strip())
+        st.success("Application preferences & profile links saved successfully!")
         st.rerun()
 
 # ================= PAGE 2: JOB DISCOVERY =================
@@ -1546,15 +1555,16 @@ elif page == "🎯 Match & Co-Pilot":
                 st.code(db.get_setting("user_location", active_resume.get('location', 'Remote / Worldwide')), language=None)
                 
             with c_kit2:
+                links_kit = db.get_candidate_links(active_resume)
                 st.caption("🔗 LinkedIn URL")
-                li_url = db.get_setting("linkedin_url", active_resume.get('links', {}).get('linkedin', 'https://linkedin.com/in/'))
-                st.code(li_url, language=None)
+                st.code(links_kit.get("linkedin") or "https://linkedin.com/in/", language=None)
                 st.caption("💻 GitHub URL")
-                gh_url = db.get_setting("github_url", active_resume.get('links', {}).get('github', 'https://github.com/'))
-                st.code(gh_url, language=None)
+                st.code(links_kit.get("github") or "https://github.com/", language=None)
                 st.caption("🌐 Portfolio / Website")
-                pf_url = db.get_setting("portfolio_url", active_resume.get('links', {}).get('portfolio', 'https://portfolio.dev'))
-                st.code(pf_url, language=None)
+                pf_display = links_kit.get("portfolio")
+                if not pf_display or pf_display == links_kit.get("github"):
+                    pf_display = links_kit.get("github") or "https://portfolio.dev"
+                st.code(pf_display, language=None)
                 st.caption("⏳ Notice Period")
                 st.code(db.get_setting("notice_period", "Immediate (2 weeks)"), language=None)
 
@@ -1708,13 +1718,15 @@ elif page == "🎯 Match & Co-Pilot":
 
         with tool_tab4:
             st.write("Copy-paste ready answers for typical company application portals (Workday, Greenhouse, Lever):")
+            links_ans = db.get_candidate_links(active_resume)
             user_prefs = {
-                "years_exp": db.get_setting("years_exp", "5+ years"),
+                "years_exp": db.get_setting("years_exp", "4+ years"),
                 "expected_salary": db.get_setting("expected_salary", "$120,000 / yr"),
                 "work_auth": db.get_setting("work_auth", "Authorized to work without sponsorship"),
                 "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)"),
-                "linkedin_url": db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"),
-                "portfolio_url": db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev")
+                "linkedin_url": links_ans.get("linkedin", ""),
+                "github_url": links_ans.get("github", ""),
+                "portfolio_url": links_ans.get("portfolio", "") or links_ans.get("github", "")
             }
             form_answers = copilot.generate_application_answers(active_resume, target_job, user_prefs)
             for q, a in form_answers.items():
@@ -1766,13 +1778,15 @@ elif page == "🎯 Match & Co-Pilot":
             st.markdown("#### 💰 Salary Intelligence & Compensation Advisor")
             st.caption(f"Real-time compensation benchmark and application negotiation guidance for **{target_job['title']}** at **{target_job['company']}**.")
             
+            links_sal = db.get_candidate_links(active_resume)
             user_prefs_dict = {
-                "years_exp": db.get_setting("years_exp", "5+ years"),
+                "years_exp": db.get_setting("years_exp", "4+ years"),
                 "expected_salary": db.get_setting("expected_salary", "$120,000 / yr"),
                 "work_auth": db.get_setting("work_auth", "Authorized to work without sponsorship"),
                 "notice_period": db.get_setting("notice_period", "Immediate (2 weeks)"),
-                "linkedin_url": db.get_setting("linkedin_url", "https://linkedin.com/in/alexmorgan-dev"),
-                "portfolio_url": db.get_setting("portfolio_url", "https://github.com/alexmorgan-dev")
+                "linkedin_url": links_sal.get("linkedin", ""),
+                "github_url": links_sal.get("github", ""),
+                "portfolio_url": links_sal.get("portfolio", "") or links_sal.get("github", "")
             }
             salary_data = copilot.estimate_salary_benchmark(target_job, user_prefs_dict)
             
@@ -1937,11 +1951,12 @@ elif page == "⚙️ Settings":
         st.subheader("👤 Candidate Profile & Quick-Apply Defaults")
         st.write("Customize your default links, contact details, and job preferences. These are instantly pre-filled into your **1-Click Application Kit** across all job portals:")
         
+        links_cfg = db.get_candidate_links()
         c_set1, c_set2 = st.columns(2)
         with c_set1:
-            cfg_li = st.text_input("LinkedIn Profile URL", value=db.get_setting("linkedin_url", "https://linkedin.com/in/"), key="cfg_li")
-            cfg_gh = st.text_input("GitHub Profile URL", value=db.get_setting("github_url", "https://github.com/"), key="cfg_gh")
-            cfg_pf = st.text_input("Portfolio / Website URL", value=db.get_setting("portfolio_url", "https://"), key="cfg_pf")
+            cfg_li = st.text_input("LinkedIn Profile URL", value=links_cfg.get("linkedin") or "https://linkedin.com/in/", key="cfg_li")
+            cfg_gh = st.text_input("GitHub Profile URL", value=links_cfg.get("github") or "https://github.com/", key="cfg_gh")
+            cfg_pf = st.text_input("Portfolio / Website URL", value=links_cfg.get("portfolio") or "", key="cfg_pf")
             cfg_loc = st.text_input("Current Location", value=db.get_setting("user_location", "Remote / Worldwide"), key="cfg_loc")
             
         with c_set2:

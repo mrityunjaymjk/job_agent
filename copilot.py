@@ -407,14 +407,26 @@ def generate_application_answers(
     
     why_us = f"I am deeply inspired by {company}'s focus on innovation and product quality. The {title} position offers an ideal intersection where my experience solving complex technical challenges can directly drive your engineering goals forward."
     
+    gh = (
+        custom_prefs.get('github_url') 
+        or custom_prefs.get('github') 
+        or (custom_prefs.get('portfolio_url') if 'github.com' in custom_prefs.get('portfolio_url', '').lower() else '') 
+        or (custom_prefs.get('portfolio') if 'github.com' in custom_prefs.get('portfolio', '').lower() else '') 
+        or resume_data.get('links', {}).get('github', '')
+        or 'https://github.com/'
+    )
+    pf = custom_prefs.get('portfolio_url') or custom_prefs.get('portfolio') or resume_data.get('links', {}).get('portfolio', gh)
+    li = custom_prefs.get('linkedin_url') or custom_prefs.get('linkedin') or resume_data.get('links', {}).get('linkedin', 'https://linkedin.com/in/')
+
     return {
         "Why do you want to work here?": why_us,
         "Years of relevant experience": custom_prefs.get('years_exp', '3-5+ years'),
         "Expected Salary / Compensation": custom_prefs.get('expected_salary', 'Competitive / Market Rate (Negotiable)'),
         "Work Authorization / Visa Status": custom_prefs.get('work_auth', 'Authorized to work without sponsorship'),
         "Availability / Notice Period": custom_prefs.get('notice_period', 'Immediate / 2 weeks'),
-        "Portfolio / GitHub": custom_prefs.get('portfolio_url') or resume_data.get('links', {}).get('github', 'https://github.com/'),
-        "LinkedIn Profile": custom_prefs.get('linkedin_url') or resume_data.get('links', {}).get('linkedin', 'https://linkedin.com/in/')
+        "GitHub Profile": gh,
+        "Portfolio / Website": pf,
+        "LinkedIn Profile": li
     }
 
 def generate_offline_interview_cheat_sheet(

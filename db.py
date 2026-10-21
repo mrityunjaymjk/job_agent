@@ -79,6 +79,22 @@ def init_db():
     except Exception:
         pass
 
+    # Safe migration: sync github_url if portfolio_url contains github and github_url is empty
+    try:
+        cursor.execute("SELECT value FROM settings WHERE key = 'github_url'")
+        gh_row = cursor.fetchone()
+        cursor.execute("SELECT value FROM settings WHERE key = 'portfolio_url'")
+        pf_row = cursor.fetchone()
+        
+        gh_val = gh_row[0].strip() if gh_row and gh_row[0] else ""
+        pf_val = pf_row[0].strip() if pf_row and pf_row[0] else ""
+        
+        if (not gh_val or gh_val.rstrip("/") in ["https://github.com", "http://github.com"]) and "github.com/" in pf_val.lower():
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('github_url', ?)", (pf_val,))
+            conn.commit()
+    except Exception:
+        pass
+
     # Auto-seed default candidate profile (Alex Morgan) if no active resume exists
     try:
         cursor.execute("SELECT id FROM resumes WHERE is_active = 1 LIMIT 1")
@@ -91,6 +107,7 @@ def init_db():
                 cursor.execute("UPDATE resumes SET is_active = 1 WHERE id = ?", (alex[0],))
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', 'San Francisco, CA')")
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('linkedin_url', 'https://linkedin.com/in/alexmorgan-dev')")
+                cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('github_url', 'https://github.com/alexmorgan-dev')")
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('portfolio_url', 'https://github.com/alexmorgan-dev')")
                 conn.commit()
             else:
@@ -116,6 +133,7 @@ def init_db():
                     ))
                     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_location', ?)", (parsed.get("location", "San Francisco, CA"),))
                     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('linkedin_url', ?)", (parsed.get("links", {}).get("linkedin", "https://linkedin.com/in/alexmorgan-dev"),))
+                    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('github_url', ?)", (parsed.get("links", {}).get("github", "https://github.com/alexmorgan-dev"),))
                     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('portfolio_url', ?)", (parsed.get("links", {}).get("github", "https://github.com/alexmorgan-dev"),))
                     conn.commit()
     except Exception:
@@ -387,6 +405,49 @@ def get_setting(key: str, default: str = "") -> str:
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else default
+
+def get_candidate_links(resume_data: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """
+    Intelligently resolves and synchronizes LinkedIn, GitHub, and Portfolio URLs
+    across database settings and parsed candidate resumes.
+    """
+    gh = get_setting("github_url", "").strip()
+    li = get_setting("linkedin_url", "").strip()
+    pf = get_setting("portfolio_url", "").strip()
+
+    # Fallback to resume_data if available
+    if resume_data and isinstance(resume_data, dict):
+        raw = resume_data.get("raw_text", "")
+        if raw:
+            try:
+                import resume_parser
+                extracted = resume_parser.extract_links(raw)
+                if not gh and extracted.get("github"):
+                    gh = extracted["github"]
+                if not li and extracted.get("linkedin"):
+                    li = extracted["linkedin"]
+                if not pf and extracted.get("portfolio"):
+                    pf = extracted["portfolio"]
+            except Exception:
+                pass
+
+    # If pf contains a valid github.com URL and gh is empty or bare placeholder
+    if pf and "github.com/" in pf.lower() and (not gh or gh.rstrip("/") in ["https://github.com", "http://github.com"]):
+        gh = pf
+        set_setting("github_url", gh)
+
+    # Clean bare placeholder github URLs
+    if gh and gh.rstrip("/") in ["https://github.com", "http://github.com"]:
+        if pf and "github.com/" in pf.lower():
+            gh = pf
+        else:
+            gh = ""
+
+    return {
+        "github": gh,
+        "linkedin": li,
+        "portfolio": pf
+    }
 
 # Initialize DB on load
 init_db()

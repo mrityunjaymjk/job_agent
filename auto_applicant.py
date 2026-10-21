@@ -475,10 +475,10 @@ def fill_all_step_fields(
     phone = resume_data.get("phone", "")
     loc = resume_data.get("location") or db.get_setting("user_location", "San Francisco, CA")
     
-    links = resume_data.get("links", {})
-    linkedin = links.get("linkedin") or db.get_setting("linkedin_url", "")
-    github = links.get("github") or db.get_setting("portfolio_url", "")
-    portfolio = links.get("portfolio") or db.get_setting("portfolio_url", "")
+    links = db.get_candidate_links(resume_data)
+    linkedin = links.get("linkedin", "")
+    github = links.get("github", "")
+    portfolio = links.get("portfolio", "") or github
 
     years_exp = db.get_setting("years_exp", "4+ years")
     clean_years_num = re.findall(r'\d+', years_exp)
