@@ -1362,7 +1362,7 @@ elif page == "🔍 Job Discovery":
                 # Action Buttons
                 btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1.3, 1.1, 0.8, 1])
                 with btn_col1:
-                    if st.button(f"🤖 Auto-Apply", key=f"auto_{job['id']}", type="primary", use_container_width=True, help="Auto-tailors materials and pops open browser window!"):
+                    if st.button(f"🚀 Auto-Apply", key=f"auto_{job['id']}", type="primary", use_container_width=True, help="Autonomous engine: auto-fills all steps and submits this application!"):
                         st.session_state.selected_job = job
                         st.session_state.nav_redirect = "🎯 Match & Co-Pilot"
                         st.session_state.trigger_auto_apply = True
@@ -1412,7 +1412,7 @@ elif page == "🎯 Match & Co-Pilot":
     else:
         # Job Overview Header
         with st.container(border=True):
-            j_col1, j_col2 = st.columns([2.6, 1.4])
+            j_col1, j_col2 = st.columns([2.3, 1.7])
             with j_col1:
                 st.markdown(f"## {target_job['title']} @ **{target_job['company']}**")
                 st.write(f"📍 {target_job.get('location', 'Remote')} &nbsp;|&nbsp; 🏷️ {target_job.get('source')} &nbsp;|&nbsp; 💰 {target_job.get('salary', 'Salary Not Disclosed')}")
@@ -1420,7 +1420,12 @@ elif page == "🎯 Match & Co-Pilot":
                 cookie_cnt = prof_stat.get("total_cookies", 0)
                 st.markdown(f'<div style="font-size: 0.8rem; color: #16A34A; font-weight: 600;">🍪 Persistent Cache Active &nbsp;•&nbsp; {cookie_cnt} saved session cookies &nbsp;•&nbsp; Auto-login enabled</div>', unsafe_allow_html=True)
             with j_col2:
-                auto_pilot_clicked = st.button("🤖 Auto-Pilot Apply (Pops Browser)", type="primary", use_container_width=True, help="Auto-tailors your materials, opens a real browser, pre-fills your data, and waits for your final review!")
+                auto_mode = st.toggle("🚀 Autonomous Mode (Auto-Submits)", value=True, help="When ON, the bot fills all steps, answers screening questions, checks terms, and clicks Submit Application for you automatically!")
+                if auto_mode:
+                    auto_pilot_clicked = st.button("🚀 Run Autonomous Auto-Apply", type="primary", use_container_width=True, help="Autonomous engine: opens portal, fills all wizard steps, and clicks Submit Application automatically!")
+                else:
+                    auto_pilot_clicked = st.button("👀 Co-Pilot Assist (Pre-fill & Review)", type="secondary", use_container_width=True, help="Pre-fills your information and leaves browser open for manual review and submission.")
+                
                 apply_url = target_job.get('apply_url') or target_job.get('url')
                 if apply_url:
                     st.link_button("🌐 Open Job Link", apply_url, use_container_width=True)
@@ -1431,24 +1436,40 @@ elif page == "🎯 Match & Co-Pilot":
 
         if auto_pilot_clicked:
             gemini_key = get_gemini_api_key()
-            with st.status("🤖 Running Auto-Pilot Job Application...", expanded=True) as status:
+            mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_mode else "Co-Pilot Assist (Pre-Fill & Review)"
+            with st.status(f"🤖 Running {mode_label}...", expanded=True) as status:
                 st.write("1. ✍️ Tailoring cover letter specifically for this job...")
                 st.write("2. 🍪 Loading persistent browser profile & cache memory (saved logins active)...")
-                st.write("3. 🖥️ Launching visible Chrome browser on your screen...")
-                st.write("4. 📝 Detecting form inputs, pre-filling answers & attaching resume...")
-                st.write("5. 👀 Screen is popped open! Please review fields, answer custom questions, and click Submit when ready.")
+                st.write("3. 🖥️ Launching browser context...")
+                st.write("4. 📝 Auto-filling multi-step form, answering screening questions & attaching resume...")
+                if auto_mode:
+                    st.write("5. 🚀 Executing 'Submit Application' and verifying submission confirmation...")
+                else:
+                    st.write("5. 👀 Form pre-filled! Browser opened for your manual review.")
+
                 result = auto_applicant.auto_apply_to_job(
                     job_data=target_job,
                     resume_data=active_resume,
                     api_key=gemini_key,
+                    auto_submit=auto_mode,
                     keep_open_seconds=90
                 )
-                status.update(label="✅ Auto-Pilot session finished!", state="complete", expanded=False)
+                if result.get("submitted"):
+                    status.update(label="🎉 Application Submitted Successfully!", state="complete", expanded=False)
+                else:
+                    status.update(label="✅ Auto-Apply session finished!", state="complete", expanded=False)
             
-            with st.expander("📋 View Auto-Pilot Session Activity Logs", expanded=True):
+            with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=True):
                 for l in result.get("logs", []):
                     st.write(f"- {l}")
-            st.success("Application marked as 'In Progress' / 'Applied' in your Application Tracker!")
+
+            if result.get("submitted"):
+                st.balloons()
+                st.success("🎉 Application Submitted Successfully! Confirmation detected and status updated to 'Applied' in your Application Tracker.")
+                if result.get("screenshot") and os.path.exists(result["screenshot"]):
+                    st.image(result["screenshot"], caption="📸 Submission Confirmation Proof", use_container_width=True)
+            else:
+                st.success("Application registered in your Application Tracker!")
         
         # Deep Match Analysis
         st.subheader("📊 Match Diagnostic & Skill Gap Analysis")

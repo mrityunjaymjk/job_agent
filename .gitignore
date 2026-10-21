@@ -1,4 +1,4 @@
-﻿# Python environments and generated files
+# Python environments and generated files
 .venv/
 venv/
 env/
@@ -27,6 +27,8 @@ job_agent.db
 *.tmp
 *.bak
 active_resume.txt
+active_resume.docx
+screenshots/
 uploads/
 resumes/
 
