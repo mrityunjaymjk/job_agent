@@ -685,6 +685,18 @@ def matches_place_filter(job: dict, place_query: str) -> bool:
             return True
         return False
         
+    # India / Pune / Local synonyms
+    if pq in ["india", "in", "bharat"]:
+        india_indicators = ["india", "pune", "bangalore", "bengaluru", "mumbai", "delhi", "new delhi", "noida", "gurgaon", "gurugram", "hyderabad", "chennai", "kolkata", "ahmedabad", "mh, india", "mh"]
+        if any(ind in job_loc for ind in india_indicators):
+            return True
+        return False
+
+    if pq in ["pune", "pun"]:
+        if "pune" in job_loc or "pune" in job_title or "mh, india" in job_loc or "maharashtra" in job_loc:
+            return True
+        return False
+
     # 4. Asia / APAC synonyms
     if pq in ["asia", "apac", "asia-pacific"]:
         asia_indicators = ["singapore", "india", "tokyo", "japan", "korea", "seoul", "indonesia", "jakarta", "philippines", "davao", "manila", "malaysia", "china", "hong kong", "taiwan", "bangalore", "chennai", "pune", "delhi", "mumbai", "apac", "asia"]
@@ -1174,38 +1186,52 @@ if page == "📄 Resume Profile":
 
 # ================= PAGE 2: JOB DISCOVERY =================
 elif page == "🔍 Job Discovery":
-    st.markdown('<div class="main-header">🔍 Live Remote Job Discovery</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Fetch real-time openings from RemoteOK and We Work Remotely, scored against your resume.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🔍 Multi-Portal Job Discovery</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Fetch live on-site, hybrid, and remote openings from Naukri, Indeed, LinkedIn, Wellfound, and global feeds, scored against your ATS resume.</div>', unsafe_allow_html=True)
     
     active_resume = db.get_active_resume()
+    all_stored_jobs = db.get_all_jobs()
     
     # Section 1: Collapsible Live Job Fetcher
-    with st.expander("📥 Fetch New Live Jobs (LinkedIn, Wellfound, RemoteOK, etc.)", expanded=False):
-        st.caption("Download fresh postings from live APIs directly into your local database.")
+    with st.expander("📥 Fetch New Live Jobs (Naukri, Indeed, LinkedIn, Wellfound, etc.)", expanded=True if not all_stored_jobs else False):
+        st.caption("Download fresh openings across local on-site, hybrid, and remote positions directly into your local database.")
+        
+        cand_default_loc = db.get_setting("user_location", active_resume.get("location", "Pune, India") if active_resume else "Pune, India")
+        
         col_s1, col_s2, col_s3 = st.columns([1.5, 1.2, 1.3])
         with col_s1:
-            search_query = st.text_input("Role / Keyword to Fetch", placeholder="e.g. Python, Full Stack, React, Java, DevOps...", key="fetch_kw_input")
+            search_query = st.text_input("Role / Tech Stack Keyword", placeholder="e.g. Java, Python, Full Stack, React, DevOps, Spring Boot...", key="fetch_kw_input")
         with col_s2:
-            fetch_location = st.text_input("Target Location", value="Remote", placeholder="e.g. Remote, United States, Singapore, India...", key="fetch_loc_input")
+            fetch_location = st.text_input("Target Location (City / Country)", value=cand_default_loc, placeholder="e.g. Pune, Bangalore, Mumbai, Delhi, Remote, India, US...", key="fetch_loc_input")
         with col_s3:
-            category_choice = st.selectbox(
-                "Category (WeWorkRemotely)",
-                [c[0] for c in job_scraper.WWR_CATEGORIES]
+            work_mode_choice = st.selectbox(
+                "Work Arrangement",
+                ["🌐 All Work Types (On-Site, Hybrid & Remote)", "🏢 On-Site (Office)", "🔀 Hybrid", "🏠 Remote Only"],
+                key="fetch_work_mode"
             )
-            cat_slug = next(c[1] for c in job_scraper.WWR_CATEGORIES if c[0] == category_choice)
+            mode_param = "All"
+            if "Remote" in work_mode_choice:
+                mode_param = "Remote"
+            elif "Hybrid" in work_mode_choice:
+                mode_param = "Hybrid"
+            elif "On-Site" in work_mode_choice:
+                mode_param = "On-Site"
+
+        ALL_AVAILABLE_SOURCES = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow", "WeWorkRemotely"]
+        DEFAULT_ACTIVE_SOURCES = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy"]
         sources_selected = st.multiselect(
             "Select Platforms to Query:", 
-            ["LinkedIn", "Wellfound", "RemoteOK", "Arbeitnow", "Jobicy", "Remotive", "WeWorkRemotely"], 
-            default=["LinkedIn", "Wellfound", "RemoteOK", "Arbeitnow", "Jobicy", "Remotive"]
+            ALL_AVAILABLE_SOURCES, 
+            default=DEFAULT_ACTIVE_SOURCES
         )
-        if st.button("🔄 Download Fresh Jobs Now", type="primary", use_container_width=True):
-            with st.spinner("Connecting to job feeds..."):
+        if st.button("🚀 Download Fresh Jobs Now", type="primary", use_container_width=True):
+            with st.spinner(f"Querying {len(sources_selected)} platforms for '{search_query or 'Tech'}' in {fetch_location}..."):
                 fetched = job_scraper.fetch_all_jobs(
                     sources=sources_selected,
                     search_query=search_query,
                     location=fetch_location,
-                    category=cat_slug,
-                    limit_per_source=30
+                    work_mode=mode_param,
+                    limit_per_source=25
                 )
                 saved_count = db.save_jobs(fetched)
                 st.session_state.cached_jobs = db.get_all_jobs()
@@ -1244,24 +1270,26 @@ elif page == "🔍 Job Discovery":
         def set_place_preset(preset_val: str):
             st.session_state["place_filter_input"] = preset_val
 
-        col_p_label, col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([0.8, 0.8, 0.9, 1.2, 1.1, 1.0])
+        col_p_label, col_p1, col_p2, col_p3, col_p4, col_p5, col_p6 = st.columns([0.8, 0.7, 1.1, 0.9, 1.2, 1.1, 1.0])
         with col_p_label:
             st.markdown('<div style="padding-top: 6px; font-size: 0.82rem; font-weight: 700; color: #64748B;">Quick Places:</div>', unsafe_allow_html=True)
         with col_p1:
             st.button("🌐 All", on_click=set_place_preset, args=("",), use_container_width=True, key="btn_loc_all")
         with col_p2:
-            st.button("🏠 Remote", on_click=set_place_preset, args=("Remote",), use_container_width=True, key="btn_loc_remote")
+            st.button("🇮🇳 India / Pune", on_click=set_place_preset, args=("Pune",), use_container_width=True, key="btn_loc_pune")
         with col_p3:
-            st.button("🏢 US / Americas", on_click=set_place_preset, args=("United States",), use_container_width=True, key="btn_loc_us")
+            st.button("🏠 Remote", on_click=set_place_preset, args=("Remote",), use_container_width=True, key="btn_loc_remote")
         with col_p4:
-            st.button("🏰 Europe & UK", on_click=set_place_preset, args=("Europe",), use_container_width=True, key="btn_loc_eu")
+            st.button("🏢 US / Americas", on_click=set_place_preset, args=("United States",), use_container_width=True, key="btn_loc_us")
         with col_p5:
+            st.button("🏰 Europe & UK", on_click=set_place_preset, args=("Europe",), use_container_width=True, key="btn_loc_eu")
+        with col_p6:
             st.button("🌏 Asia & SG", on_click=set_place_preset, args=("Singapore",), use_container_width=True, key="btn_loc_asia")
 
         # Platform selector
         source_filter = st.radio(
             "Filter by Platform:",
-            ["All", "LinkedIn", "Wellfound", "RemoteOK", "Arbeitnow", "Jobicy", "Remotive", "WeWorkRemotely"],
+            ["All", "Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow", "WeWorkRemotely"],
             horizontal=True,
             key="filter_source_radio"
         )

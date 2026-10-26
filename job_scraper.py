@@ -281,15 +281,186 @@ def fetch_remotive_jobs(search_query: str = "", limit: int = 35) -> List[Dict[st
         print(f"Error fetching Remotive jobs: {e}")
     return jobs
 
-def fetch_linkedin_jobs(search_query: str = "Software Engineer", location: str = "Remote", limit: int = 30) -> List[Dict[str, Any]]:
+def format_salary_amount(min_amt: Any, max_amt: Any, currency: str = "INR", interval: str = "yearly") -> str:
+    """Formats salary from numbers into human-readable compensation strings (LPA or $/yr)."""
+    if (not min_amt or min_amt != min_amt) and (not max_amt or max_amt != max_amt):
+        return ""
+    try:
+        curr_str = str(currency).upper()
+        curr_sym = "₹" if ("INR" in curr_str or "₹" in curr_str) else "$"
+        is_inr = curr_sym == "₹"
+        
+        def fmt(val):
+            if not val or val != val:
+                return ""
+            v = float(val)
+            if is_inr and v >= 100000:
+                lakhs = v / 100000.0
+                return f"{lakhs:.1f}L".replace(".0L", "L") + " LPA"
+            elif v >= 1000:
+                return f"{v:,.0f}"
+            return str(int(v))
+
+        f_min = fmt(min_amt)
+        f_max = fmt(max_amt)
+        if f_min and f_max:
+            return f"{curr_sym}{f_min} - {curr_sym}{f_max}"
+        elif f_min:
+            return f"From {curr_sym}{f_min}"
+        elif f_max:
+            return f"Up to {curr_sym}{f_max}"
+    except Exception:
+        pass
+    return ""
+
+def resolve_indeed_country(location: str) -> str:
+    """Maps freeform location string to Indeed country code parameter."""
+    loc = (location or "").lower()
+    if any(k in loc for k in ["india", "pune", "mumbai", "bangalore", "bengaluru", "delhi", "hyderabad", "chennai", "kolkata", "noida", "gurgaon"]):
+        return "India"
+    if any(k in loc for k in ["uk", "london", "united kingdom", "england", "scotland"]):
+        return "UK"
+    if any(k in loc for k in ["canada", "toronto", "vancouver", "montreal"]):
+        return "Canada"
+    if any(k in loc for k in ["germany", "berlin", "munich", "frankfurt"]):
+        return "Germany"
+    if any(k in loc for k in ["australia", "sydney", "melbourne"]):
+        return "Australia"
+    if any(k in loc for k in ["singapore"]):
+        return "Singapore"
+    return "USA" if ("us" in loc or "united states" in loc) else "India"
+
+def fetch_naukri_jobs(search_query: str = "Java Developer", location: str = "Pune", limit: int = 25) -> List[Dict[str, Any]]:
+    """Fetches live on-site, hybrid, and local jobs from Naukri.com."""
     jobs = []
-    # Query across multiple page offsets
+    try:
+        from jobspy import scrape_jobs
+        q = search_query.strip() if search_query else "Software Engineer"
+        loc = location.strip() if location and location.lower() != "remote" else "India"
+        df = scrape_jobs(
+            site_name=["naukri"],
+            search_term=q,
+            location=loc,
+            results_wanted=min(limit, 35)
+        )
+        if df is not None and not df.empty:
+            for _, r in df.iterrows():
+                title = str(r.get("title", "")).strip()
+                company = str(r.get("company", "")).strip()
+                if not title or not company:
+                    continue
+                job_url = str(r.get("job_url", "")).strip()
+                job_id = make_job_id("naukri", str(r.get("id") or job_url or f"{title}_{company}"))
+                
+                raw_skills = r.get("skills")
+                tags = clean_tags(raw_skills) if raw_skills and raw_skills == raw_skills else ["Naukri", "Tech"]
+                
+                loc_val = str(r.get("location", "")).strip()
+                if not loc_val or loc_val == "nan":
+                    loc_val = loc if loc else "India"
+                    
+                sal = format_salary_amount(r.get("min_amount"), r.get("max_amount"), r.get("currency", "INR"), r.get("interval", "yearly"))
+                
+                desc = clean_html(str(r.get("description", "")))
+                if not desc or desc == "nan":
+                    desc = f"{title} opening at {company} on Naukri. Location: {loc_val}."
+                    
+                pub_date = str(r.get("date_posted", ""))[:10]
+                if pub_date == "nan":
+                    pub_date = ""
+
+                jobs.append({
+                    "id": job_id,
+                    "source": "Naukri",
+                    "title": title,
+                    "company": company,
+                    "tags": tags,
+                    "location": loc_val,
+                    "salary": sal,
+                    "url": job_url,
+                    "apply_url": job_url,
+                    "description": desc,
+                    "published_date": pub_date
+                })
+    except Exception as e:
+        print(f"Error fetching Naukri jobs: {e}")
+    return jobs
+
+def fetch_indeed_jobs(search_query: str = "Software Engineer", location: str = "Pune", limit: int = 25) -> List[Dict[str, Any]]:
+    """Fetches live on-site, hybrid, and local jobs from Indeed."""
+    jobs = []
+    try:
+        from jobspy import scrape_jobs
+        q = search_query.strip() if search_query else "Software Engineer"
+        loc = location.strip() if location and location.lower() != "remote" else "Pune, India"
+        country = resolve_indeed_country(loc)
+        df = scrape_jobs(
+            site_name=["indeed"],
+            search_term=q,
+            location=loc,
+            country_indeed=country,
+            results_wanted=min(limit, 35)
+        )
+        if df is not None and not df.empty:
+            for _, r in df.iterrows():
+                title = str(r.get("title", "")).strip()
+                company = str(r.get("company", "")).strip()
+                if not title or not company:
+                    continue
+                job_url = str(r.get("job_url", "")).strip()
+                job_id = make_job_id("indeed", str(r.get("id") or job_url or f"{title}_{company}"))
+                
+                raw_skills = r.get("skills")
+                tags = clean_tags(raw_skills) if raw_skills and raw_skills == raw_skills else ["Indeed", "Tech"]
+                
+                loc_val = str(r.get("location", "")).strip()
+                if not loc_val or loc_val == "nan":
+                    loc_val = loc
+                    
+                sal = format_salary_amount(r.get("min_amount"), r.get("max_amount"), r.get("currency", "INR"), r.get("interval", "yearly"))
+                
+                desc = clean_html(str(r.get("description", "")))
+                if not desc or desc == "nan":
+                    desc = f"{title} opportunity at {company} on Indeed. Location: {loc_val}."
+                    
+                pub_date = str(r.get("date_posted", ""))[:10]
+                if pub_date == "nan":
+                    pub_date = ""
+
+                jobs.append({
+                    "id": job_id,
+                    "source": "Indeed",
+                    "title": title,
+                    "company": company,
+                    "tags": tags,
+                    "location": loc_val,
+                    "salary": sal,
+                    "url": job_url,
+                    "apply_url": job_url,
+                    "description": desc,
+                    "published_date": pub_date
+                })
+    except Exception as e:
+        print(f"Error fetching Indeed jobs: {e}")
+    return jobs
+
+def fetch_linkedin_jobs(search_query: str = "Software Engineer", location: str = "Pune, India", work_mode: str = "All", limit: int = 30) -> List[Dict[str, Any]]:
+    jobs = []
+    wt_param = ""
+    wm = (work_mode or "").lower()
+    if wm == "remote":
+        wt_param = "&f_WT=2"
+    elif wm in ["on-site", "onsite"]:
+        wt_param = "&f_WT=1"
+    elif wm == "hybrid":
+        wt_param = "&f_WT=3"
+
     for start in [0, 10, 20]:
         if len(jobs) >= limit:
             break
         q = requests.utils.quote(search_query if search_query else "Software Engineer")
-        loc = requests.utils.quote(location if location else "Remote")
-        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={q}&location={loc}&f_WT=2&start={start}"
+        loc = requests.utils.quote(location if location else "India")
+        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={q}&location={loc}{wt_param}&start={start}"
         try:
             res = requests.get(url, headers=HEADERS, timeout=10)
             if res.status_code == 200:
@@ -311,7 +482,7 @@ def fetch_linkedin_jobs(search_query: str = "Software Engineer", location: str =
                     company = c_el.text.strip() if c_el else "Company on LinkedIn"
                     raw_link = link_el.get("href", "")
                     job_url = raw_link.split("?")[0] if "?" in raw_link else raw_link
-                    location_text = l_el.text.strip() if l_el else "Remote"
+                    location_text = l_el.text.strip() if l_el else location
                     pub_date = date_el.text.strip() if date_el else ""
                     
                     job_id = make_job_id("linkedin", job_url or f"{title}_{company}")
@@ -400,47 +571,67 @@ WWR_CATEGORIES = [
 def fetch_all_jobs(
     sources: Optional[List[str]] = None, 
     search_query: str = "", 
-    location: str = "Remote",
+    location: str = "Pune, India",
+    work_mode: str = "All",
     category: str = "remote-programming-jobs",
-    limit_per_source: int = 35
+    limit_per_source: int = 30
 ) -> List[Dict[str, Any]]:
     if sources is None:
-        sources = ["LinkedIn", "Wellfound", "RemoteOK", "Arbeitnow", "Jobicy", "Remotive"]
+        sources = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow"]
         
     all_jobs = []
 
+    # 1. Naukri (India & Global Hub)
+    if "Naukri" in sources:
+        nk_jobs = fetch_naukri_jobs(search_query=search_query, location=location, limit=limit_per_source)
+        if nk_jobs:
+            all_jobs.extend(nk_jobs)
+
+    # 2. Indeed (Global & India On-site/Hybrid/Remote)
+    if "Indeed" in sources:
+        ind_jobs = fetch_indeed_jobs(search_query=search_query, location=location, limit=limit_per_source)
+        if ind_jobs:
+            all_jobs.extend(ind_jobs)
+
+    # 3. LinkedIn (Local, On-Site, Hybrid, and Remote)
     if "LinkedIn" in sources:
-        li_jobs = fetch_linkedin_jobs(search_query=search_query, location=location or "Remote", limit=limit_per_source)
+        li_jobs = fetch_linkedin_jobs(search_query=search_query, location=location, work_mode=work_mode, limit=limit_per_source)
         if li_jobs:
             all_jobs.extend(li_jobs)
 
+    # 4. Wellfound (Startups)
     if "Wellfound" in sources:
         wf_jobs = fetch_wellfound_jobs(search_query=search_query, limit=limit_per_source)
         if wf_jobs:
             all_jobs.extend(wf_jobs)
     
-    if "RemoteOK" in sources:
-        tag = search_query if search_query else None
-        rok_jobs = fetch_remoteok_jobs(tag=tag, limit=limit_per_source)
-        if rok_jobs:
-            all_jobs.extend(rok_jobs)
-
-    if "Arbeitnow" in sources:
-        arbeit_jobs = fetch_arbeitnow_jobs(search_query=search_query, limit=limit_per_source)
-        if arbeit_jobs:
-            all_jobs.extend(arbeit_jobs)
-
+    # 5. Jobicy (Global Tech Openings)
     if "Jobicy" in sources:
         jobicy_jobs = fetch_jobicy_jobs(search_query=search_query, limit=limit_per_source)
         if jobicy_jobs:
             all_jobs.extend(jobicy_jobs)
 
-    if "Remotive" in sources:
+    # 6. RemoteOK
+    if "RemoteOK" in sources and (work_mode.lower() in ["all", "remote"]):
+        tag = search_query if search_query else None
+        rok_jobs = fetch_remoteok_jobs(tag=tag, limit=limit_per_source)
+        if rok_jobs:
+            all_jobs.extend(rok_jobs)
+
+    # 7. Remotive
+    if "Remotive" in sources and (work_mode.lower() in ["all", "remote"]):
         remotive_jobs = fetch_remotive_jobs(search_query=search_query, limit=limit_per_source)
         if remotive_jobs:
             all_jobs.extend(remotive_jobs)
+
+    # 8. Arbeitnow
+    if "Arbeitnow" in sources and (work_mode.lower() in ["all", "remote"]):
+        arbeit_jobs = fetch_arbeitnow_jobs(search_query=search_query, limit=limit_per_source)
+        if arbeit_jobs:
+            all_jobs.extend(arbeit_jobs)
         
-    if "WeWorkRemotely" in sources:
+    # 9. WeWorkRemotely
+    if "WeWorkRemotely" in sources and (work_mode.lower() in ["all", "remote"]):
         wwr_jobs = fetch_weworkremotely_jobs(category=category, limit=limit_per_source)
         if wwr_jobs:
             all_jobs.extend(wwr_jobs)
@@ -454,12 +645,6 @@ def fetch_all_jobs(
             seen.add(key)
             j_tags = clean_tags(j.get('tags', []))
             j['tags'] = j_tags
-            # Filter by search_query if specified and not already filtered
-            if search_query:
-                q = search_query.lower()
-                text = f"{j['title']} {j['company']} {' '.join(j_tags)} {j['description']}".lower()
-                if q not in text:
-                    continue
             deduped.append(j)
             
     return deduped
