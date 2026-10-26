@@ -229,59 +229,284 @@ def open_persistent_browser_manager(target_url: str = "https://www.linkedin.com/
     logs.append(f"✅ Persistent session saved! ({status['total_cookies']} cookies active)")
     return {"success": True, "logs": logs, "status": status}
 
-def find_or_create_resume_file(resume_data: Dict[str, Any], prefer_docx: bool = True) -> str:
-    """
-    Ensures a resume file exists on disk for browser file-upload inputs.
-    Generates both .docx and .txt formats for compatibility with all ATS systems.
-    """
-    # 1. Always generate .txt
-    resume_txt_path = Path(__file__).parent / "active_resume.txt"
-    with open(resume_txt_path, "w", encoding="utf-8") as f:
-        f.write(resume_data.get("raw_text", ""))
+RESUMES_DIR = Path(__file__).parent / "tailored_resumes"
 
-    # 2. Generate .docx if python-docx is available
-    resume_docx_path = Path(__file__).parent / "active_resume.docx"
+def get_resumes_dir() -> Path:
+    RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+    return RESUMES_DIR
+
+def _clean_for_pdf(text: str) -> str:
+    """Replaces non-latin1 unicode characters with clean standard equivalents."""
+    if not text:
+        return ""
+    replacements = {
+        '\u2022': '-',
+        '\u2013': '-',
+        '\u2014': '--',
+        '\u2018': "'",
+        '\u2019': "'",
+        '\u201c': '"',
+        '\u201d': '"',
+        '\u2026': '...',
+        '\u00a0': ' ',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode('latin-1', 'replace').decode('latin-1')
+
+def generate_tailored_resume_files(
+    resume_data: Dict[str, Any], 
+    job_data: Optional[Dict[str, Any]] = None, 
+    api_key: str = ""
+) -> Dict[str, Any]:
+    """
+    Dynamically generates ATS-tailored resume files (.pdf, .docx, .txt) customized
+    for the specific target company and role, highlighting matching keywords.
+    """
+    if not job_data:
+        job_data = {
+            "title": "Software Engineer",
+            "company": "Technology Company",
+            "description": ""
+        }
+
+    tailored = copilot.generate_tailored_resume_data(resume_data, job_data, api_key)
+    res_dir = get_resumes_dir()
+
+    name = tailored.get("name", "Candidate")
+    cand_slug = re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_') or "Candidate"
+    comp_slug = re.sub(r'[^a-zA-Z0-9]', '_', tailored.get("company", "Company")).strip('_')[:20] or "Company"
+    title_slug = re.sub(r'[^a-zA-Z0-9]', '_', tailored.get("job_title", "Role")).strip('_')[:20] or "Role"
+    file_base = f"{cand_slug}_Resume_{comp_slug}_{title_slug}"
+
+    docx_path = res_dir / f"{file_base}.docx"
+    pdf_path = res_dir / f"{file_base}.pdf"
+    txt_path = res_dir / f"{file_base}.txt"
+
+    contact_parts = []
+    if resume_data.get("email"): contact_parts.append(resume_data["email"])
+    if resume_data.get("phone"): contact_parts.append(resume_data["phone"])
+    if resume_data.get("location"): contact_parts.append(resume_data["location"])
+    links = db.get_candidate_links(resume_data)
+    if links.get("linkedin"): contact_parts.append(links["linkedin"])
+    if links.get("github"): contact_parts.append(links["github"])
+
+    # 1. Generate DOCX
     try:
         import docx
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
         doc = docx.Document()
-        name = resume_data.get("name", "Candidate")
-        doc.add_heading(name, level=0)
-        
-        contact_line = []
-        if resume_data.get("email"):
-            contact_line.append(resume_data["email"])
-        if resume_data.get("phone"):
-            contact_line.append(resume_data["phone"])
-        if resume_data.get("location"):
-            contact_line.append(resume_data["location"])
-        if contact_line:
-            doc.add_paragraph(" | ".join(contact_line))
-            
+        for section in doc.sections:
+            section.top_margin = Inches(0.5)
+            section.bottom_margin = Inches(0.5)
+            section.left_margin = Inches(0.6)
+            section.right_margin = Inches(0.6)
+
+        # Header Name
+        p_name = doc.add_paragraph()
+        p_name.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_name = p_name.add_run(name)
+        r_name.font.size = Pt(18)
+        r_name.font.bold = True
+        r_name.font.color.rgb = RGBColor(15, 23, 42)
+
+        # Target Headline
+        p_title = doc.add_paragraph()
+        p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_title = p_title.add_run(tailored.get("headline", tailored.get("job_title", "Target Role")))
+        r_title.font.size = Pt(11)
+        r_title.font.bold = True
+        r_title.font.color.rgb = RGBColor(37, 99, 235)
+
+        # Contact line
+        p_cont = doc.add_paragraph()
+        p_cont.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_cont.paragraph_format.space_after = Pt(8)
+        r_cont = p_cont.add_run(" | ".join(contact_parts))
+        r_cont.font.size = Pt(9.5)
+        r_cont.font.color.rgb = RGBColor(100, 116, 139)
+
+        def add_docx_heading(h_text):
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(8)
+            p.paragraph_format.space_after = Pt(2)
+            r = p.add_run(h_text.upper())
+            r.font.size = Pt(10.5)
+            r.font.bold = True
+            r.font.color.rgb = RGBColor(30, 41, 59)
+
+        # Summary
+        add_docx_heading("Professional Summary")
+        p_s = doc.add_paragraph()
+        p_s.paragraph_format.space_after = Pt(6)
+        r_s = p_s.add_run(tailored.get("summary", ""))
+        r_s.font.size = Pt(9.5)
+
         # Skills
-        skills = resume_data.get("skills", [])
-        if skills:
-            doc.add_heading("Technical Skills", level=1)
-            doc.add_paragraph(", ".join(skills if isinstance(skills, list) else [str(skills)]))
-            
+        add_docx_heading("Technical Skills & Core Competencies")
+        p_sk = doc.add_paragraph()
+        p_sk.paragraph_format.space_after = Pt(6)
+        skills_list = tailored.get("prioritized_skills", [])
+        r_sk = p_sk.add_run(" • ".join(skills_list))
+        r_sk.font.size = Pt(9.5)
+
         # Experience
-        exp = resume_data.get("experience", "")
-        if exp:
-            doc.add_heading("Professional Experience", level=1)
-            doc.add_paragraph(str(exp))
-            
+        add_docx_heading("Professional Experience")
+        p_exp = doc.add_paragraph()
+        p_exp.paragraph_format.space_after = Pt(4)
+        r_exp = p_exp.add_run(str(resume_data.get("experience", "")))
+        r_exp.font.size = Pt(9.5)
+
+        # Tailored achievements
+        bullets = tailored.get("tailored_bullets", [])
+        if bullets:
+            add_docx_heading("Key Technical Achievements & Highlights")
+            for b in bullets:
+                p_b = doc.add_paragraph(style='List Bullet')
+                p_b.paragraph_format.space_after = Pt(2)
+                r_b = p_b.add_run(str(b))
+                r_b.font.size = Pt(9.5)
+
         # Education
-        edu = resume_data.get("education", "")
-        if edu:
-            doc.add_heading("Education", level=1)
-            doc.add_paragraph(str(edu))
-            
-        doc.save(str(resume_docx_path))
-        if prefer_docx and resume_docx_path.exists():
-            return str(resume_docx_path.resolve())
+        add_docx_heading("Education")
+        p_ed = doc.add_paragraph()
+        r_ed = p_ed.add_run(str(resume_data.get("education", "")))
+        r_ed.font.size = Pt(9.5)
+
+        doc.save(str(docx_path))
+    except Exception as e:
+        print(f"Notice generating DOCX: {e}")
+
+    # 2. Generate PDF via fpdf2
+    try:
+        from fpdf import FPDF
+        class PDFResume(FPDF):
+            def header(self): pass
+            def footer(self): pass
+
+        pdf = PDFResume(format='letter')
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_margins(15, 12, 15)
+        pdf.add_page()
+        
+        usable_w = pdf.w - pdf.l_margin - pdf.r_margin
+
+        pdf.set_font('Helvetica', 'B', 16)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(usable_w, 7, _clean_for_pdf(name), align="C", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font('Helvetica', 'B', 10.5)
+        pdf.set_text_color(37, 99, 235)
+        pdf.cell(usable_w, 6, _clean_for_pdf(tailored.get("headline", tailored.get("job_title", ""))[:75]), align="C", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font('Helvetica', '', 9)
+        pdf.set_text_color(100, 116, 139)
+        clean_contact = [_clean_for_pdf(c) for c in contact_parts]
+        pdf.cell(usable_w, 5, " | ".join(clean_contact), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+
+        def add_pdf_heading(h_text):
+            pdf.set_x(15)
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.set_text_color(30, 41, 59)
+            pdf.cell(usable_w, 6, h_text.upper(), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_draw_color(226, 232, 240)
+            pdf.line(15, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(2)
+
+        add_pdf_heading("Professional Summary")
+        pdf.set_x(15)
+        pdf.set_font('Helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(tailored.get("summary", "")))
+        pdf.ln(2)
+
+        add_pdf_heading("Technical Skills & Core Competencies")
+        pdf.set_x(15)
+        pdf.set_font('Helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
+        clean_skills = [_clean_for_pdf(s) for s in tailored.get("prioritized_skills", [])]
+        pdf.multi_cell(usable_w, 4.5, " | ".join(clean_skills))
+        pdf.ln(2)
+
+        add_pdf_heading("Professional Experience")
+        pdf.set_x(15)
+        pdf.set_font('Helvetica', '', 8.5)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(str(resume_data.get("experience", ""))[:1400]))
+        pdf.ln(2)
+
+        bullets = tailored.get("tailored_bullets", [])
+        if bullets:
+            add_pdf_heading("Key Technical Achievements & Highlights")
+            pdf.set_font('Helvetica', '', 8.5)
+            pdf.set_text_color(51, 65, 85)
+            for b in bullets:
+                pdf.set_x(15)
+                pdf.multi_cell(usable_w, 4.5, f"- {_clean_for_pdf(str(b))}")
+            pdf.ln(2)
+
+        add_pdf_heading("Education")
+        pdf.set_x(15)
+        pdf.set_font('Helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(str(resume_data.get("education", ""))))
+
+        pdf.output(str(pdf_path))
+    except Exception as e:
+        print(f"Notice generating PDF: {e}")
+
+    # 3. Generate Plain Text
+    try:
+        txt_content = f"""{name}
+{tailored.get("headline", "")}
+{" | ".join(contact_parts)}
+
+PROFESSIONAL SUMMARY
+{tailored.get("summary", "")}
+
+TECHNICAL SKILLS
+{", ".join(tailored.get("prioritized_skills", []))}
+
+PROFESSIONAL EXPERIENCE
+{str(resume_data.get("experience", ""))}
+
+EDUCATION
+{str(resume_data.get("education", ""))}
+"""
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(txt_content.strip())
     except Exception:
         pass
 
-    return str(resume_txt_path.resolve())
+    # Compatibility copies
+    active_txt = Path(__file__).parent / "active_resume.txt"
+    active_docx = Path(__file__).parent / "active_resume.docx"
+    try:
+        import shutil
+        if docx_path.exists(): shutil.copy2(docx_path, active_docx)
+        if txt_path.exists(): shutil.copy2(txt_path, active_txt)
+    except Exception:
+        pass
+
+    return {
+        "pdf": str(pdf_path.resolve()) if pdf_path.exists() else str(docx_path.resolve()),
+        "docx": str(docx_path.resolve()) if docx_path.exists() else str(txt_path.resolve()),
+        "txt": str(txt_path.resolve()),
+        "filename_base": file_base,
+        "headline": tailored.get("headline", ""),
+        "summary": tailored.get("summary", ""),
+        "matching_skills": tailored.get("matching_skills", []),
+        "prioritized_skills": tailored.get("prioritized_skills", []),
+        "tailored_bullets": tailored.get("tailored_bullets", [])
+    }
+
+def find_or_create_resume_file(resume_data: Dict[str, Any], prefer_docx: bool = True) -> str:
+    """Backwards compatibility helper."""
+    res = generate_tailored_resume_files(resume_data, None)
+    return res["docx"] if prefer_docx else res["pdf"]
 
 def get_search_scopes(page):
     """Returns page and all accessible frames so inputs inside ATS iframes (Greenhouse, Lever, Workday) are populated."""
@@ -499,7 +724,8 @@ def fill_all_step_fields(
     answers: Dict[str, str], 
     tailored_letter: str, 
     resume_file_path: str,
-    logs: Optional[List[str]] = None
+    logs: Optional[List[str]] = None,
+    tailored_resume: Optional[Dict[str, Any]] = None
 ) -> Dict[str, int]:
     """
     Comprehensive multi-field auto-filler executed at each step of an application wizard.
@@ -667,24 +893,31 @@ def fill_all_step_fields(
     # 10. Checkboxes
     stats["checkboxes"] = safe_check_checkboxes(page, logs)
 
-    # 11. Resume File Upload
+    # 11. Tailored Resume File Upload (Across page and all ATS iframes)
     try:
-        file_inputs = page.locator('input[type="file"]')
-        if file_inputs.count() > 0:
-            for fi_idx in range(file_inputs.count()):
-                fi = file_inputs.nth(fi_idx)
-                try:
-                    accept = (fi.get_attribute("accept") or "").lower()
-                    # Choose .docx if .pdf/.docx requested, else .txt
-                    upload_target = resume_file_path
-                    if ".docx" in accept or ".doc" in accept:
-                        docx_cand = str(Path(resume_file_path).with_suffix(".docx"))
-                        if os.path.exists(docx_cand):
-                            upload_target = docx_cand
-                    fi.set_input_files(upload_target)
-                    stats["files"] += 1
-                except Exception:
-                    pass
+        scopes = get_search_scopes(page)
+        for scope in scopes:
+            file_inputs = scope.locator('input[type="file"]')
+            if file_inputs.count() > 0:
+                for fi_idx in range(file_inputs.count()):
+                    fi = file_inputs.nth(fi_idx)
+                    try:
+                        accept = (fi.get_attribute("accept") or "").lower()
+                        upload_target = resume_file_path
+                        if tailored_resume:
+                            if ".docx" in accept or ".doc" in accept:
+                                upload_target = tailored_resume.get("docx") or resume_file_path
+                            elif ".pdf" in accept or not accept or "*/*" in accept:
+                                upload_target = tailored_resume.get("pdf") or resume_file_path
+                            elif ".txt" in accept:
+                                upload_target = tailored_resume.get("txt") or resume_file_path
+
+                        fi.set_input_files(upload_target)
+                        stats["files"] += 1
+                        if logs is not None:
+                            logs.append(f"📎 Attached tailored resume: {Path(upload_target).name}")
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -1044,7 +1277,9 @@ def auto_apply_to_job(
     resume_data["phone"] = candidate_phone
     db.set_setting("user_phone", candidate_phone)
 
-    resume_file_path = find_or_create_resume_file(resume_data, prefer_docx=True)
+    # 2. Dynamically tailor resume for this specific job & company
+    tailored_resume = generate_tailored_resume_files(resume_data, job_data, api_key=api_key)
+    resume_file_path = tailored_resume.get("pdf") or tailored_resume.get("docx")
 
     user_prefs = {
         "years_exp": db.get_setting("years_exp", "4+ years"),
@@ -1216,7 +1451,7 @@ def auto_apply_to_job(
                         handle_captcha_handover(page, logs, timeout_seconds=90)
 
                     # 1. Fill all visible inputs, selects, radios, checkboxes on current step
-                    stats = fill_all_step_fields(page, resume_data, answers, tailored_letter, resume_file_path, logs)
+                    stats = fill_all_step_fields(page, resume_data, answers, tailored_letter, resume_file_path, logs, tailored_resume)
                     logs.append(f"Step {step_num}: Populated form fields (Inputs: {stats['inputs']}, Radios: {stats['radios']}, Dropdowns: {stats['selects']}, Checkboxes: {stats['checkboxes']}, Files: {stats['files']})")
                     time.sleep(1.2)
 

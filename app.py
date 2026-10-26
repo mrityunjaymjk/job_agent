@@ -1604,7 +1604,8 @@ elif page == "🎯 Match & Co-Pilot":
                 st.code(", ".join(active_resume.get('skills', [])[:6]), language=None)
 
         # Co-Pilot Tools Tabs
-        tool_tab1, tool_tab2, tool_tab3, tool_tab4, tool_tab5, tool_tab6 = st.tabs([
+        tool_tab0, tool_tab1, tool_tab2, tool_tab3, tool_tab4, tool_tab5, tool_tab6 = st.tabs([
+            "📄 Tailored ATS Resume",
             "✍️ Tailored Cover Letter", 
             "📝 Optimized Bullet Points", 
             "💬 Recruiter Outreach (LinkedIn/Email)", 
@@ -1612,6 +1613,56 @@ elif page == "🎯 Match & Co-Pilot":
             "🎯 Interview Prep Cheat Sheet",
             "💰 Salary Intelligence Advisor"
         ])
+
+        with tool_tab0:
+            st.markdown(f"#### 📄 ATS-Tailored Resume for **{target_job['title']}** at **{target_job['company']}**")
+            st.caption("Custom-engineered resume highlighting your exact matching skills and experience for this role. Automatically attached during Auto-Apply on Indeed, LinkedIn, Greenhouse, and Lever!")
+
+            tailored_res_files = auto_applicant.generate_tailored_resume_files(active_resume, target_job, api_key=gemini_key)
+            
+            c_res_info, c_res_dl = st.columns([2.5, 1.5])
+            with c_res_info:
+                st.markdown(f"**🎯 Target Headline:** `{tailored_res_files.get('headline', '')}`")
+                st.markdown("**📝 Tailored Professional Summary:**")
+                st.info(tailored_res_files.get("summary", ""))
+                
+                match_skills = tailored_res_files.get("matching_skills", [])
+                if match_skills:
+                    st.write("**✅ Highlighted ATS Keywords:**")
+                    st.markdown(" ".join([f'<span class="skill-chip">{s}</span>' for s in match_skills]), unsafe_allow_html=True)
+                    
+            with c_res_dl:
+                st.write("")
+                st.markdown('<div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 0.85rem; color: #166534;">⚡ <strong>Auto-Attach Active:</strong><br>This tailored file is automatically attached when you auto-apply.</div>', unsafe_allow_html=True)
+                
+                pdf_p = Path(tailored_res_files.get("pdf", ""))
+                if pdf_p.exists():
+                    with open(pdf_p, "rb") as f_pdf:
+                        st.download_button(
+                            label="📥 Download Tailored Resume (.PDF)",
+                            data=f_pdf.read(),
+                            file_name=pdf_p.name,
+                            mime="application/pdf",
+                            type="primary",
+                            use_container_width=True
+                        )
+                        
+                docx_p = Path(tailored_res_files.get("docx", ""))
+                if docx_p.exists():
+                    with open(docx_p, "rb") as f_docx:
+                        st.download_button(
+                            label="📥 Download Tailored Resume (.DOCX)",
+                            data=f_docx.read(),
+                            file_name=docx_p.name,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True
+                        )
+
+            with st.expander("👀 View Full Tailored Plaintext Resume", expanded=False):
+                txt_p = Path(tailored_res_files.get("txt", ""))
+                if txt_p.exists():
+                    with open(txt_p, "r", encoding="utf-8") as f_txt:
+                        st.code(f_txt.read(), language=None)
         
         with tool_tab1:
             col_t1, col_t2 = st.columns([1, 2])

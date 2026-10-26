@@ -669,3 +669,97 @@ def estimate_salary_benchmark(
             "negotiation_tip": f"When recruiters ask for your expectations, state: 'Based on market benchmarks for {job_data.get('title','this position')} and my expertise in {domain}, I am targeting in the range of {p50_str} - {p75_str}, but am flexible for the right growth opportunity.'"
         }
     }
+
+def generate_tailored_resume_data(
+    resume_data: Dict[str, Any], 
+    job_data: Dict[str, Any], 
+    api_key: str = ""
+) -> Dict[str, Any]:
+    """
+    Synthesizes candidate background with target job requirements to produce
+    an ATS-optimized tailored resume structure (headline, summary, prioritized skills, tailored bullets).
+    """
+    name = resume_data.get("name", "Candidate")
+    target_title = job_data.get("title", "Software Engineer")
+    company = job_data.get("company", "Target Employer")
+    
+    cand_skills = _clean_str_list(resume_data.get("skills", []))
+    
+    # Extract job keywords from tags, title, and description
+    job_text = f"{target_title} {' '.join(_clean_str_list(job_data.get('tags', [])))} {str(job_data.get('description', ''))}".lower()
+    
+    matching_skills = []
+    additional_skills = []
+    
+    for s in cand_skills:
+        s_clean = s.strip()
+        if not s_clean:
+            continue
+        if s_clean.lower() in job_text or any(w in job_text for w in s_clean.lower().split() if len(w) > 3):
+            matching_skills.append(s_clean)
+        else:
+            additional_skills.append(s_clean)
+            
+    prioritized_skills = matching_skills + additional_skills
+    if not prioritized_skills:
+        prioritized_skills = cand_skills
+        
+    top_matches = matching_skills[:4] if matching_skills else cand_skills[:4]
+    match_str = f" ({', '.join(top_matches)})" if top_matches else ""
+    headline = f"{name} | {target_title}{match_str}"
+    
+    years_exp = "4+ years"
+    try:
+        import db
+        years_exp = db.get_setting("years_exp", "4+ years")
+    except Exception:
+        pass
+        
+    # Generate tailored summary
+    summary = ""
+    if api_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            prompt = f"""
+You are an expert ATS resume strategist. Write a concise, 3-sentence professional summary for a candidate applying to this specific role.
+Highlight their direct alignment with the target company and technology stack.
+
+CANDIDATE:
+Name: {name}
+Skills: {', '.join(cand_skills)}
+Experience: {str(resume_data.get('experience', ''))[:800]}
+
+TARGET JOB:
+Title: {target_title}
+Company: {company}
+Tech Stack / Description: {str(job_data.get('description', ''))[:1000]}
+
+Keep it punchy, professional, and under 75 words. Do not use generic buzzwords.
+"""
+            res = _call_gemini(client, prompt)
+            summary = res.text.strip()
+        except Exception:
+            pass
+            
+    if not summary:
+        skill_mention = f"leveraging {', '.join(top_matches)}" if top_matches else "building scalable modern systems"
+        summary = (
+            f"Results-driven and innovative {target_title} with {years_exp} of experience {skill_mention}. "
+            f"Proven track record of engineering scalable architectures, clean code standards, and automated deployment pipelines. "
+            f"Excited to contribute hands-on technical excellence and high-velocity problem solving to {company}."
+        )
+        
+    tailored_bullets = generate_tailored_bullets(resume_data, job_data, api_key)
+    
+    return {
+        "name": name,
+        "job_title": target_title,
+        "company": company,
+        "headline": headline,
+        "summary": summary,
+        "matching_skills": matching_skills,
+        "prioritized_skills": prioritized_skills,
+        "tailored_bullets": tailored_bullets
+    }
+
