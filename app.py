@@ -783,39 +783,31 @@ with st.sidebar:
         else:
             initials = "CV"
             
-        st.markdown(f"""
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px; margin-top: 24px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748B;">Candidate Profile</span>
-                <span style="background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; display: flex; align-items: center; gap: 4px;">
-                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #10B981; display: inline-block;"></span> Active
-                </span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <div style="width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #6366F1 0%, #EC4899 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; color: #FFFFFF; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); flex-shrink: 0;">
-                    {initials}
-                </div>
-                <div style="min-width: 0; flex: 1;">
-                    <div style="font-size: 0.92rem; font-weight: 700; color: #F1F5F9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px;">
-                        <span>{cand_name}</span>
-                        <span style="color: #38BDF8; font-size: 0.82rem;" title="Verified Profile">✓</span>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        {cand_email}
-                    </div>
-                </div>
-            </div>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
-                <span style="background: rgba(59, 130, 246, 0.12); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">
-                    🛠️ {len(cand_skills)} Skills
-                </span>
-                {f'<span style="background: rgba(16, 185, 129, 0.12); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">📍 {active_resume.get("location")}</span>' if active_resume.get("location") else ''}
-                <span style="background: rgba(168, 85, 247, 0.12); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">
-                    ⚡ Auto-Fill Ready
-                </span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        loc_chip = f'<span style="background: rgba(16, 185, 129, 0.12); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">📍 {active_resume.get("location")}</span>' if active_resume.get("location") else ''
+        card_html = f"""<div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px; margin-top: 24px;">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+<span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748B;">Candidate Profile</span>
+<span style="background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; display: flex; align-items: center; gap: 4px;">
+<span style="width: 5px; height: 5px; border-radius: 50%; background: #10B981; display: inline-block;"></span> Active
+</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+<div style="width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #6366F1 0%, #EC4899 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; color: #FFFFFF; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3); flex-shrink: 0;">{initials}</div>
+<div style="min-width: 0; flex: 1;">
+<div style="font-size: 0.92rem; font-weight: 700; color: #F1F5F9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px;">
+<span>{cand_name}</span>
+<span style="color: #38BDF8; font-size: 0.82rem;" title="Verified Profile">✓</span>
+</div>
+<div style="font-size: 0.74rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{cand_email}</div>
+</div>
+</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+<span style="background: rgba(59, 130, 246, 0.12); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">🛠️ {len(cand_skills)} Skills</span>
+{loc_chip}
+<span style="background: rgba(168, 85, 247, 0.12); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.25); font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;">⚡ Auto-Fill Ready</span>
+</div>
+</div>"""
+        st.markdown(card_html, unsafe_allow_html=True)
     else:
         st.markdown("""
         <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 14px; margin-top: 24px; text-align: center;">
