@@ -871,8 +871,7 @@ with st.container(key="mobile_bottom_dock"):
 page = st.session_state.current_page
 
 # Clean Mobile UI & Hide Streamlit Cloud parent Manage app button via script
-import streamlit.components.v1 as components
-components.html("""
+clean_ui_script = """
 <script>
 function cleanMobileUI() {
     try {
@@ -984,7 +983,12 @@ try {
     observer.observe(targetNode, { childList: true, subtree: true });
 } catch(e) {}
 </script>
-""", height=0, width=0)
+"""
+if hasattr(st, "iframe"):
+    st.iframe(clean_ui_script, height=1, width=1)
+else:
+    import streamlit.components.v1 as components
+    components.html(clean_ui_script, height=0, width=0)
 
 # ================= PAGE 1: RESUME PROFILE =================
 if page == "📄 Resume Profile":
