@@ -1286,12 +1286,21 @@ elif page == "🔍 Job Discovery":
         with col_p6:
             st.button("🌏 Asia & SG", on_click=set_place_preset, args=("Singapore",), use_container_width=True, key="btn_loc_asia")
 
-        # Platform selector
-        source_filter = st.radio(
-            "Filter by Platform:",
-            ["All", "Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow", "WeWorkRemotely"],
-            horizontal=True,
-            key="filter_source_radio"
+        # Platform Multiselect Filter
+        platform_options = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow", "WeWorkRemotely"]
+        existing_sources = sorted(list(set(j.get("source", "").strip() for j in all_jobs if j.get("source", "").strip())))
+        combined_platforms = list(platform_options)
+        for s in existing_sources:
+            if s and s not in combined_platforms:
+                combined_platforms.append(s)
+
+        selected_platforms = st.multiselect(
+            "🏷️ Filter by Platform (Select one or multiple):",
+            options=combined_platforms,
+            default=[],
+            placeholder="Showing all platforms (Select one or multiple: Naukri, Indeed, LinkedIn...)",
+            help="Filter jobs across multiple platforms simultaneously. Leave empty to view all platforms.",
+            key="filter_source_multiselect"
         )
 
         min_score = st.slider("Filter by Minimum Match Score (%)", min_value=0, max_value=90, value=0, step=5)
@@ -1310,9 +1319,12 @@ elif page == "🔍 Job Discovery":
                 if hide_applied:
                     continue
 
-            # Source check
-            if source_filter != "All" and j.get("source", "").strip().lower() != source_filter.strip().lower():
-                continue
+            # Source / Platform check
+            if selected_platforms:
+                selected_sources_lower = [s.strip().lower() for s in selected_platforms]
+                job_source_lower = str(j.get("source", "")).strip().lower()
+                if job_source_lower not in selected_sources_lower:
+                    continue
 
             # Place / Location check
             if place_filter and not matches_place_filter(j, place_filter):
