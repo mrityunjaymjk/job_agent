@@ -1488,21 +1488,22 @@ elif page == "🎯 Match & Co-Pilot":
                     keep_open_seconds=90
                 )
                 if result.get("submitted"):
-                    status.update(label="🎉 Application Submitted Successfully!", state="complete", expanded=False)
+                    status.update(label="🎉 Application Verified & Submitted!", state="complete", expanded=False)
                 else:
-                    status.update(label="✅ Auto-Apply session finished!", state="complete", expanded=False)
+                    status.update(label="⚠️ Application Needs Review (Confirmation Not Detected)", state="complete", expanded=False)
             
             with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=True):
                 for l in result.get("logs", []):
                     st.write(f"- {l}")
 
+            cand_email = active_resume.get("email") or "mrityunjayk456@gmail.com"
             if result.get("submitted"):
                 st.balloons()
-                st.success("🎉 Application Submitted Successfully! Confirmation detected and status updated to 'Applied' in your Application Tracker.")
+                st.success(f"🎉 Application Submitted & Confirmed! The platform will send an automated revert/confirmation email to **{cand_email}**.")
                 if result.get("screenshot") and os.path.exists(result["screenshot"]):
                     st.image(result["screenshot"], caption="📸 Submission Confirmation Proof", use_container_width=True)
             else:
-                st.success("Application registered in your Application Tracker!")
+                st.warning(f"⚠️ Application form was opened, but final platform confirmation receipt was not detected. Status is marked as **Needs Review** in your Application Tracker to prevent false applications. Revert emails are only sent by platforms once submission is confirmed.")
         
         # Deep Match Analysis
         st.subheader("📊 Match Diagnostic & Skill Gap Analysis")
@@ -1917,8 +1918,8 @@ elif page == "📊 Application Tracker":
     if not apps:
         st.info("You haven't tracked any applications yet. Browse jobs in 'Job Discovery' and click 'Save' or 'Co-Pilot'!")
     else:
-        status_tabs = st.tabs(["All", "Saved", "Applied", "Interviewing", "Offer", "Rejected"])
-        tab_names = ["All", "Saved", "Applied", "Interviewing", "Offer", "Rejected"]
+        status_tabs = st.tabs(["All", "Saved", "Applied", "Needs Review", "Interviewing", "Offer", "Rejected"])
+        tab_names = ["All", "Saved", "Applied", "Needs Review", "Interviewing", "Offer", "Rejected"]
         
         for tab, t_name in zip(status_tabs, tab_names):
             with tab:
@@ -2033,9 +2034,10 @@ elif page == "⚙️ Settings":
                 "Select Destination to Open:",
                 [
                     "LinkedIn (https://www.linkedin.com/login)",
+                    "Indeed (https://secure.indeed.com)",
+                    "Naukri (https://www.naukri.com/nlogin/login)",
                     "Google Account (https://accounts.google.com)",
                     "Wellfound / AngelList (https://wellfound.com/login)",
-                    "Indeed (https://secure.indeed.com)",
                     "Custom URL..."
                 ],
                 key="sel_login_platform"

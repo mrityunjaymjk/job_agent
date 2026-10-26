@@ -164,6 +164,23 @@ def open_persistent_browser_manager(target_url: str = "https://www.linkedin.com/
     """
     from playwright.sync_api import sync_playwright
 
+    # Candidate Contact info (Email is the recipient for platform confirmation/revert emails)
+    candidate_email = (
+        resume_data.get("email") 
+        or db.get_setting("user_email") 
+        or "mrityunjayk456@gmail.com"
+    ).strip()
+    resume_data["email"] = candidate_email
+    db.set_setting("user_email", candidate_email)
+
+    candidate_phone = (
+        resume_data.get("phone") 
+        or db.get_setting("user_phone") 
+        or "+91-7972379015"
+    ).strip()
+    resume_data["phone"] = candidate_phone
+    db.set_setting("user_phone", candidate_phone)
+
     p_dir = get_browser_profile_path()
     ensure_cache_seeded()
 
@@ -283,26 +300,50 @@ def find_or_create_resume_file(resume_data: Dict[str, Any], prefer_docx: bool = 
 
     return str(resume_txt_path.resolve())
 
+def get_search_scopes(page):
+    """Returns page and all accessible frames so inputs inside ATS iframes (Greenhouse, Lever, Workday) are populated."""
+    scopes = [page]
+    try:
+        for f in page.frames:
+            if f != page.main_frame:
+                scopes.append(f)
+    except Exception:
+        pass
+    return scopes
+
+def get_active_page(context, fallback_page):
+    """Finds the most recently active non-closed tab in the browser context."""
+    if context.pages:
+        for p in reversed(context.pages):
+            try:
+                if not p.is_closed():
+                    return p
+            except Exception:
+                continue
+    return fallback_page
+
 def fill_input_safely(page, selectors: List[str], value: Any, logs: Optional[List[str]] = None) -> bool:
-    """Tries multiple selectors to find and safely fill an input with human-like keystroke delays."""
+    """Tries multiple selectors across page and any nested ATS iframes to find and safely fill an input."""
     if not value or not str(value).strip():
         return False
     str_val = str(value).strip()
-    for sel in selectors:
-        try:
-            loc = page.locator(sel).first
-            if loc.is_visible(timeout=800):
-                current_val = ""
-                try:
-                    current_val = loc.input_value(timeout=300)
-                except Exception:
-                    pass
-                if not current_val:
-                    loc.click()
-                    loc.fill(str_val)
-                    return True
-        except Exception:
-            continue
+    scopes = get_search_scopes(page)
+    for scope in scopes:
+        for sel in selectors:
+            try:
+                loc = scope.locator(sel).first
+                if loc.is_visible(timeout=400):
+                    current_val = ""
+                    try:
+                        current_val = loc.input_value(timeout=200)
+                    except Exception:
+                        pass
+                    if not current_val:
+                        loc.click()
+                        loc.fill(str_val)
+                        return True
+            except Exception:
+                continue
     return False
 
 def safe_answer_radios(page, logs: Optional[List[str]] = None) -> int:
@@ -790,7 +831,7 @@ def detect_captcha(page) -> Dict[str, Any]:
         # 3. Check text patterns inside body or page title
         try:
             page_title = page.title().lower()
-            if any(t in page_title for t in ["just a moment...", "security check", "attention required! | cloudflare"]):
+            if any(t in page_title for t in ["just a moment...", "security check", "attention required! | cloudflare", "blocked - indeed", "blocked", "access denied"]):
                 return {"has_captcha": True, "type": "Cloudflare / Security Page", "details": f"Title matched: '{page_title}'"}
 
             body_text = page.inner_text("body", timeout=400).lower()
@@ -895,6 +936,69 @@ def handle_captcha_handover(
 
     if logs is not None:
         logs.append("⚠️ CAPTCHA handover timed out. Attempting to proceed with application flow...")
+    return False
+
+def detect_login_wall(page) -> Dict[str, Any]:
+    """
+    Detects if the user has hit a login wall on LinkedIn, Indeed, Naukri, or an ATS portal.
+    """
+    try:
+        if page.is_closed():
+            return {"needs_login": False, "platform": ""}
+        curr_url = page.url.lower()
+        if "linkedin.com/login" in curr_url or "linkedin.com/checkpoint" in curr_url:
+            return {"needs_login": True, "platform": "LinkedIn"}
+        if "indeed.com/account/login" in curr_url or "secure.indeed.com/auth" in curr_url:
+            return {"needs_login": True, "platform": "Indeed"}
+        if "naukri.com/nlogin" in curr_url:
+            return {"needs_login": True, "platform": "Naukri"}
+    except Exception:
+        pass
+    return {"needs_login": False, "platform": ""}
+
+def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None, timeout_seconds: int = 120) -> bool:
+    """
+    Hands over browser to user to complete one-time login; saves cookies permanently to disk.
+    """
+    try:
+        page.bring_to_front()
+    except Exception:
+        pass
+    try:
+        import winsound
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+    except Exception:
+        pass
+
+    if logs is not None:
+        logs.append(f"🔑 [ACTION REQUIRED] {platform} Sign-In Required!")
+        logs.append("🎮 GIVING CHARGE TO YOUR HANDS: Please sign in to your account in the opened window.")
+        logs.append(f"💾 Your session & cookies will be permanently remembered! Auto-apply resumes once you log in (Timeout: {timeout_seconds}s)...")
+
+    start_time = time.time()
+    last_reminder = start_time
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            if page.is_closed():
+                return False
+            check = detect_login_wall(page)
+            if not check["needs_login"]:
+                if logs is not None:
+                    logs.append(f"🎉 Successfully signed in to {platform}! Session saved to disk. Resuming auto-apply...")
+                time.sleep(2)
+                return True
+            if time.time() - last_reminder >= 20:
+                rem = max(0, int(timeout_seconds - (time.time() - start_time)))
+                if logs is not None:
+                    logs.append(f"⏳ Waiting for your login in the browser window... ({rem}s remaining)")
+                last_reminder = time.time()
+            time.sleep(1.5)
+        except Exception:
+            break
+
+    if logs is not None:
+        logs.append(f"⚠️ Login handover timed out for {platform}.")
     return False
 
 def auto_apply_to_job(
@@ -1049,8 +1153,20 @@ def auto_apply_to_job(
                         if loc.is_visible(timeout=1000):
                             loc.click()
                             logs.append(f"Clicked initial '{sel.replace('button:has-text(', '').replace('a:has-text(', '').rstrip(')')}' button")
-                            time.sleep(2)
+                            time.sleep(2.5)
+
+                            # Check if click opened a new tab/window
+                            new_page = get_active_page(context, page)
+                            if new_page != page:
+                                page = new_page
+                                page.bring_to_front()
+                                logs.append(f"🌐 Application opened in new tab: {page.url[:80]}...")
                             
+                            # Check login wall
+                            l_stat = detect_login_wall(page)
+                            if l_stat["needs_login"]:
+                                handle_login_handover(page, l_stat["platform"], logs, timeout_seconds=120)
+
                             # 🛡️ CAPTCHA Check 2: Check if opening application triggered a challenge
                             c_stat = detect_captcha(page)
                             if c_stat["has_captcha"]:
@@ -1129,21 +1245,36 @@ def auto_apply_to_job(
                             # Verify submission success
                             is_submitted = detect_submission_success(page, target_url, logs)
                             proof_screenshot = take_confirmation_screenshot(page, job_data.get("id", "job"), logs)
-                            
-                            # Mark as genuinely Applied in DB!
                             current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-                            db.save_or_update_application(
-                                job_id=job_data["id"],
-                                job_title=job_data["title"],
-                                company=job_data["company"],
-                                apply_url=target_url,
-                                status="Applied",
-                                cover_letter=tailored_letter,
-                                applied_date=current_time_str
-                            )
-                            logs.append("🎉 Application SUBMITTED successfully!")
-                            logs.append(f"✅ Application Tracker updated: Status = 'Applied' ({current_time_str})")
-                            break
+
+                            if is_submitted:
+                                db.save_or_update_application(
+                                    job_id=job_data["id"],
+                                    job_title=job_data["title"],
+                                    company=job_data["company"],
+                                    apply_url=target_url,
+                                    status="Applied",
+                                    cover_letter=tailored_letter,
+                                    applied_date=current_time_str
+                                )
+                                logs.append("🎉 Application GENUINELY SUBMITTED & CONFIRMED by platform!")
+                                logs.append(f"✅ Application Tracker updated: Status = 'Applied' ({current_time_str})")
+                                logs.append(f"📧 Confirmation / revert email will be delivered to: {candidate_email}")
+                                break
+                            else:
+                                db.save_or_update_application(
+                                    job_id=job_data["id"],
+                                    job_title=job_data["title"],
+                                    company=job_data["company"],
+                                    apply_url=target_url,
+                                    status="Needs Review",
+                                    cover_letter=tailored_letter
+                                )
+                                logs.append("⚠️ Submit was clicked, but platform confirmation receipt was not detected.")
+                                logs.append("📋 Tracker updated to 'Needs Review' (to prevent false 'Applied' without revert email).")
+                                logs.append("💡 Browser window kept open so you can review or complete remaining steps.")
+                                page.bring_to_front()
+                                break
 
                     # 3. If not submitted, check if there's a NEXT / CONTINUE button to advance
                     next_clicked = False
@@ -1176,7 +1307,38 @@ def auto_apply_to_job(
                                         sub_btn.click()
                                         submit_clicked = True
                                         time.sleep(4)
-                                        is_submitted = True
+                                        
+                                        c_stat = detect_captcha(page)
+                                        if c_stat["has_captcha"]:
+                                            handle_captcha_handover(page, logs, timeout_seconds=90)
+                                            
+                                        is_submitted = detect_submission_success(page, target_url, logs)
+                                        proof_screenshot = take_confirmation_screenshot(page, job_data.get("id", "job"), logs)
+                                        current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                                        if is_submitted:
+                                            db.save_or_update_application(
+                                                job_id=job_data["id"],
+                                                job_title=job_data["title"],
+                                                company=job_data["company"],
+                                                apply_url=target_url,
+                                                status="Applied",
+                                                cover_letter=tailored_letter,
+                                                applied_date=current_time_str
+                                            )
+                                            logs.append("🎉 Application SUBMITTED & CONFIRMED by platform!")
+                                            logs.append(f"📧 Confirmation / revert email will be sent to: {candidate_email}")
+                                        else:
+                                            db.save_or_update_application(
+                                                job_id=job_data["id"],
+                                                job_title=job_data["title"],
+                                                company=job_data["company"],
+                                                apply_url=target_url,
+                                                status="Needs Review",
+                                                cover_letter=tailored_letter
+                                            )
+                                            logs.append("⚠️ Submit clicked, but platform confirmation receipt was not detected.")
+                                            logs.append("📋 Marked as 'Needs Review' so you can verify in the opened browser window.")
                                         break
                                 except Exception:
                                     continue
