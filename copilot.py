@@ -1,6 +1,12 @@
 import json
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+try:
+    import db
+except Exception:
+    db = None
 
 def _clean_str_list(items: Any) -> List[str]:
     """Helper to safely flatten and extract non-empty strings from skills/tags."""
@@ -837,7 +843,7 @@ LinkedIn: {li_url} | GitHub: {gh_url}
 """
 
     # 2. Value-First Project & Tech Match
-    elif email_style == "technical":
+    elif email_style in ("technical", "tech_focus"):
         subject = f"Technical Alignment: {title} @ {company} ({cand_name})"
         body = f"""{salutation}
 
