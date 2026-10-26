@@ -21,6 +21,21 @@ def get_screenshots_path() -> Path:
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     return SCREENSHOTS_DIR
 
+_playwright_installed = False
+
+def ensure_playwright_browsers() -> None:
+    """Ensures Chromium is installed when running in cloud/Linux environments."""
+    global _playwright_installed
+    if _playwright_installed:
+        return
+    if os.name != "nt":
+        try:
+            import subprocess
+            subprocess.run(["playwright", "install", "chromium"], timeout=120, check=False)
+            _playwright_installed = True
+        except Exception:
+            pass
+
 def get_profile_status() -> Dict[str, Any]:
     """Inspects the persistent browser profile and counts stored cookies and sessions."""
     p_dir = get_browser_profile_path()
@@ -778,6 +793,7 @@ def auto_apply_to_job(
 
     if is_cloud:
         logs.append("☁️ Running on Streamlit Community Cloud (Headless Mode)")
+        ensure_playwright_browsers()
     else:
         logs.append("🍪 Loaded persistent browser profile & cache memory (saved logins active)")
         logs.append("🌐 Launching visible Chrome browser on your screen...")
