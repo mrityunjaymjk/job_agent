@@ -1440,20 +1440,143 @@ elif page == "🎯 Match & Co-Pilot":
     st.markdown('<div class="sub-header">Deep ATS alignment, custom cover letters, tailored bullet points, and 1-click application prep.</div>', unsafe_allow_html=True)
     
     active_resume = db.get_active_resume()
-    target_job = st.session_state.selected_job
-    
-    # Allow choosing job from cached list if none selected
     all_jobs = db.get_all_jobs()
-    if not target_job and all_jobs:
-        job_options = {f"{j['title']} @ {j['company']} ({j['source']})": j for j in all_jobs}
-        selected_key = st.selectbox("Choose a job to analyze:", list(job_options.keys()))
-        target_job = job_options[selected_key]
-        st.session_state.selected_job = target_job
+    applications = db.get_applications()
+
+    # Build Applied / In-Tracker job options
+    applied_job_options = {}
+    for a in applications:
+        jid = a.get("job_id")
+        job = db.get_job_by_id(jid) if jid else None
+        if not job:
+            job = {
+                "id": jid or f"app_{a['id']}",
+                "title": a.get("job_title", "Software Engineer"),
+                "company": a.get("company", "Company"),
+                "location": "Remote / On-site",
+                "source": "Application Tracker",
+                "url": a.get("apply_url", ""),
+                "apply_url": a.get("apply_url", ""),
+                "description": a.get("notes", "") or f"{a.get('job_title')} at {a.get('company')}",
+                "salary": "Salary Not Disclosed",
+                "tags": []
+            }
+        else:
+            job = dict(job)
+        job["application_status"] = a.get("status", "Applied")
+        job["applied_date"] = a.get("applied_date", "")
+        job["app_id"] = a.get("id")
+
+        stat = a.get("status", "Applied")
+        dt = f" • {a.get('applied_date')}" if a.get("applied_date") else ""
+        lbl = f"🏢 {a.get('company')} — {a.get('job_title')}  [{stat}{dt}]"
+        if lbl in applied_job_options:
+            lbl = f"{lbl} (#{a['id']})"
+        applied_job_options[lbl] = job
+
+    # Build All Discovered Jobs options
+    discovered_job_options = {}
+    for j in all_jobs:
+        j_copy = dict(j)
+        lbl = f"🏢 {j.get('company')} — {j.get('title')}  ({j.get('source', 'Web')})"
+        if lbl in discovered_job_options:
+            lbl = f"{lbl} (#{j['id']})"
+        discovered_job_options[lbl] = j_copy
+
+    current_job = st.session_state.get("selected_job")
+
+    # Match current_job in applied jobs
+    is_current_in_applied = False
+    applied_match_idx = 0
+    if current_job and applied_job_options:
+        cur_id = str(current_job.get("id", ""))
+        cur_key = (str(current_job.get("title", "")).strip().lower(), str(current_job.get("company", "")).strip().lower())
+        for idx, (lbl, j) in enumerate(applied_job_options.items()):
+            if (cur_id and str(j.get("id")) == cur_id) or (cur_key[0] and cur_key[1] and (str(j.get("title")).strip().lower(), str(j.get("company")).strip().lower()) == cur_key):
+                is_current_in_applied = True
+                applied_match_idx = idx
+                break
+
+    # Match current_job in discovered jobs
+    discovered_match_idx = 0
+    if current_job and discovered_job_options:
+        cur_id = str(current_job.get("id", ""))
+        cur_key = (str(current_job.get("title", "")).strip().lower(), str(current_job.get("company", "")).strip().lower())
+        for idx, (lbl, j) in enumerate(discovered_job_options.items()):
+            if (cur_id and str(j.get("id")) == cur_id) or (cur_key[0] and cur_key[1] and (str(j.get("title")).strip().lower(), str(j.get("company")).strip().lower()) == cur_key):
+                discovered_match_idx = idx
+                break
+
+    # Build source options
+    source_options = []
+    if applied_job_options:
+        source_options.append(f"📋 Jobs Applied / In Tracker ({len(applied_job_options)})")
+    if discovered_job_options:
+        source_options.append(f"🔍 All Discovered Jobs ({len(discovered_job_options)})")
+    if not source_options:
+        source_options = ["🔍 No Jobs Available"]
+
+    # Synchronize external navigation / initial selection
+    cur_job_id_str = str(current_job.get("id", "")) if current_job else ""
+    if st.session_state.get("last_synced_copilot_job_id") != cur_job_id_str:
+        st.session_state["last_synced_copilot_job_id"] = cur_job_id_str
+        if is_current_in_applied and source_options:
+            st.session_state["copilot_source_choice"] = source_options[0]
+        elif not is_current_in_applied and len(source_options) > 1:
+            st.session_state["copilot_source_choice"] = source_options[1]
+
+    # Render Prominent Job Selector Dropdown Card
+    with st.container(border=True):
+        c_mode, c_dropdown = st.columns([1.1, 2.9])
+        with c_mode:
+            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #38BDF8; margin-bottom: 2px;'>📂 SELECT FROM:</div>", unsafe_allow_html=True)
+            chosen_source = st.radio(
+                "Filter Source",
+                options=source_options,
+                key="copilot_source_choice",
+                label_visibility="collapsed"
+            )
         
+        with c_dropdown:
+            if "Applied" in chosen_source and applied_job_options:
+                st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #38BDF8; margin-bottom: 2px;'>🎯 CHOOSE APPLIED JOB TO TAILOR ATS RESUME & OUTREACH:</div>", unsafe_allow_html=True)
+                sel_lbl = st.selectbox(
+                    "Select Applied Job",
+                    options=list(applied_job_options.keys()),
+                    index=applied_match_idx if applied_match_idx < len(applied_job_options) else 0,
+                    key="copilot_applied_job_select",
+                    label_visibility="collapsed"
+                )
+                target_job = applied_job_options[sel_lbl]
+                st.session_state.selected_job = target_job
+            elif "Discovered" in chosen_source and discovered_job_options:
+                st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #38BDF8; margin-bottom: 2px;'>🎯 CHOOSE DISCOVERED JOB TO TAILOR & APPLY:</div>", unsafe_allow_html=True)
+                sel_lbl = st.selectbox(
+                    "Select Discovered Job",
+                    options=list(discovered_job_options.keys()),
+                    index=discovered_match_idx if discovered_match_idx < len(discovered_job_options) else 0,
+                    key="copilot_discovered_job_select",
+                    label_visibility="collapsed"
+                )
+                target_job = discovered_job_options[sel_lbl]
+                st.session_state.selected_job = target_job
+            elif current_job:
+                target_job = current_job
+            else:
+                target_job = None
+
+    # Reset any job-specific input widgets when switching to a different job
+    cur_selected_id = str(target_job.get("id", "")) if target_job else ""
+    if st.session_state.get("active_copilot_job_id") != cur_selected_id:
+        for k in ["cold_mail_recipient", "cold_mail_subj", "cold_mail_body", "cold_mail_contact_name"]:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.session_state.active_copilot_job_id = cur_selected_id
+
     if not active_resume:
         st.warning("⚠️ Please upload or load a resume in the 'Resume Profile' tab first!")
     elif not target_job:
-        st.info("ℹ️ Please select a job from the 'Job Discovery' tab or fetch jobs first!")
+        st.info("ℹ️ Please select a job from the dropdown above or from 'Job Discovery' to begin tailoring!")
     else:
         # Job Overview Header
         with st.container(border=True):
@@ -1461,6 +1584,21 @@ elif page == "🎯 Match & Co-Pilot":
             with j_col1:
                 st.markdown(f"## {target_job['title']} @ **{target_job['company']}**")
                 st.write(f"📍 {target_job.get('location', 'Remote')} &nbsp;|&nbsp; 🏷️ {target_job.get('source')} &nbsp;|&nbsp; 💰 {target_job.get('salary', 'Salary Not Disclosed')}")
+                
+                existing_app = db.get_application_by_job_id(target_job.get('id', ''))
+                if existing_app:
+                    app_status = existing_app.get('status', 'Applied')
+                    app_date = existing_app.get('applied_date', '')
+                    date_str = f" • Applied on: {app_date}" if app_date else ""
+                    status_bg = "#DCFCE7" if app_status == "Applied" else ("#FEF3C7" if app_status == "Needs Review" else "#DBEAFE")
+                    status_color = "#166534" if app_status == "Applied" else ("#92400E" if app_status == "Needs Review" else "#1E40AF")
+                    st.markdown(
+                        f'<div style="background:{status_bg}; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 3px 8px; display: inline-block; font-size: 0.82rem; font-weight: 600; color:{status_color}; margin-top: 3px; margin-bottom: 6px;">'
+                        f'📋 Application Tracker: <strong>{app_status}</strong>{date_str}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
                 prof_stat = auto_applicant.get_profile_status()
                 cookie_cnt = prof_stat.get("total_cookies", 0)
                 st.markdown(f'<div style="font-size: 0.8rem; color: #16A34A; font-weight: 600;">🍪 Persistent Cache Active &nbsp;•&nbsp; {cookie_cnt} saved session cookies &nbsp;•&nbsp; Auto-login enabled</div>', unsafe_allow_html=True)
