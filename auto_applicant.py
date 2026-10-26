@@ -164,23 +164,6 @@ def open_persistent_browser_manager(target_url: str = "https://www.linkedin.com/
     """
     from playwright.sync_api import sync_playwright
 
-    # Candidate Contact info (Email is the recipient for platform confirmation/revert emails)
-    candidate_email = (
-        resume_data.get("email") 
-        or db.get_setting("user_email") 
-        or "mrityunjayk456@gmail.com"
-    ).strip()
-    resume_data["email"] = candidate_email
-    db.set_setting("user_email", candidate_email)
-
-    candidate_phone = (
-        resume_data.get("phone") 
-        or db.get_setting("user_phone") 
-        or "+91-7972379015"
-    ).strip()
-    resume_data["phone"] = candidate_phone
-    db.set_setting("user_phone", candidate_phone)
-
     p_dir = get_browser_profile_path()
     ensure_cache_seeded()
 
@@ -1043,6 +1026,23 @@ def auto_apply_to_job(
         status="In Progress",
         cover_letter=tailored_letter
     )
+
+    # Candidate Contact info (Email is recipient for platform confirmation/revert emails)
+    candidate_email = (
+        resume_data.get("email") 
+        or db.get_setting("user_email") 
+        or "mrityunjayk456@gmail.com"
+    ).strip()
+    resume_data["email"] = candidate_email
+    db.set_setting("user_email", candidate_email)
+
+    candidate_phone = (
+        resume_data.get("phone") 
+        or db.get_setting("user_phone") 
+        or "+91-7972379015"
+    ).strip()
+    resume_data["phone"] = candidate_phone
+    db.set_setting("user_phone", candidate_phone)
 
     resume_file_path = find_or_create_resume_file(resume_data, prefer_docx=True)
 
