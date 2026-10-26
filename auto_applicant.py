@@ -722,6 +722,181 @@ def take_confirmation_screenshot(page, job_id: str, logs: Optional[List[str]] = 
     except Exception:
         return None
 
+def detect_captcha(page) -> Dict[str, Any]:
+    """
+    Detects if a CAPTCHA, Cloudflare Turnstile, reCAPTCHA, hCaptcha, Arkose / FunCAPTCHA,
+    or bot-verification challenge is currently active and visible on the page.
+    Returns:
+        {"has_captcha": bool, "type": str, "details": str}
+    """
+    try:
+        if page.is_closed():
+            return {"has_captcha": False, "type": "", "details": "Page is closed"}
+
+        # 1. Check known CAPTCHA and bot challenge iframes
+        iframe_patterns = [
+            ('iframe[src*="challenges.cloudflare.com" i]', "Cloudflare Turnstile Challenge"),
+            ('iframe[src*="turnstile" i]', "Cloudflare Turnstile"),
+            ('iframe[title*="turnstile" i]', "Cloudflare Turnstile"),
+            ('iframe[src*="google.com/recaptcha" i]', "Google reCAPTCHA"),
+            ('iframe[src*="recaptcha" i]', "Google reCAPTCHA"),
+            ('iframe[title*="recaptcha" i]', "Google reCAPTCHA"),
+            ('iframe[src*="hcaptcha.com" i]', "hCaptcha"),
+            ('iframe[src*="hcaptcha" i]', "hCaptcha"),
+            ('iframe[title*="hcaptcha" i]', "hCaptcha"),
+            ('iframe[src*="arkoselabs" i]', "Arkose Labs FunCAPTCHA"),
+            ('iframe[src*="funcaptcha" i]', "FunCAPTCHA"),
+            ('iframe[id*="arkose" i]', "Arkose Labs Challenge"),
+            ('iframe[title*="challenge" i]', "Security Challenge Frame"),
+            ('iframe[title*="verification" i]', "Security Verification Frame"),
+            ('iframe[src*="captcha" i]', "Generic CAPTCHA Frame")
+        ]
+
+        for sel, name in iframe_patterns:
+            try:
+                frame_loc = page.locator(sel).first
+                if frame_loc.is_visible(timeout=250):
+                    box = frame_loc.bounding_box(timeout=250)
+                    if box and box["width"] > 20 and box["height"] > 20:
+                        return {"has_captcha": True, "type": name, "details": f"Visible iframe matched selector '{sel}'"}
+            except Exception:
+                continue
+
+        # 2. Check DOM elements specifically associated with CAPTCHAs
+        element_patterns = [
+            ('.g-recaptcha', "Google reCAPTCHA Container"),
+            ('.h-captcha', "hCaptcha Container"),
+            ('#cf-turnstile', "Cloudflare Turnstile Container"),
+            ('#challenge-running', "Cloudflare Waiting Room / Challenge"),
+            ('#challenge-stage', "Cloudflare Challenge Stage"),
+            ('.challenge-form', "Security Challenge Form"),
+            ('[data-testid*="captcha" i]', "CAPTCHA Test Element"),
+            ('[id*="captcha" i]', "CAPTCHA Element"),
+            ('[class*="captcha" i]', "CAPTCHA Widget"),
+            ('[id*="security-check" i]', "Security Check Element"),
+            ('[class*="security-check" i]', "Security Check Element")
+        ]
+
+        for sel, name in element_patterns:
+            try:
+                elem_loc = page.locator(sel).first
+                if elem_loc.is_visible(timeout=200):
+                    box = elem_loc.bounding_box(timeout=200)
+                    if box and box["width"] > 20 and box["height"] > 20:
+                        return {"has_captcha": True, "type": name, "details": f"Visible element matched selector '{sel}'"}
+            except Exception:
+                continue
+
+        # 3. Check text patterns inside body or page title
+        try:
+            page_title = page.title().lower()
+            if any(t in page_title for t in ["just a moment...", "security check", "attention required! | cloudflare"]):
+                return {"has_captcha": True, "type": "Cloudflare / Security Page", "details": f"Title matched: '{page_title}'"}
+
+            body_text = page.inner_text("body", timeout=400).lower()
+            text_signals = [
+                ("verify you are human", "Cloudflare / Human Verification"),
+                ("verify that you are human", "Human Verification Challenge"),
+                ("verifying you are human", "Cloudflare Turnstile Verification"),
+                ("complete the security check", "Security Verification"),
+                ("please verify that you are not a robot", "reCAPTCHA Verification"),
+                ("confirm you're not a robot", "Bot Challenge"),
+                ("confirm you are human", "Human Verification"),
+                ("press and hold", "Press & Hold Bot Challenge"),
+                ("press & hold", "Press & Hold Bot Challenge"),
+                ("please solve this puzzle", "Arkose Puzzle Challenge"),
+                ("let's confirm you are human", "Human Verification")
+            ]
+            for phrase, name in text_signals:
+                if phrase in body_text:
+                    return {"has_captcha": True, "type": name, "details": f"Body text contains '{phrase}'"}
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    return {"has_captcha": False, "type": "", "details": "No CAPTCHA detected"}
+
+def handle_captcha_handover(
+    page, 
+    logs: Optional[List[str]] = None, 
+    timeout_seconds: int = 90
+) -> bool:
+    """
+    Hands over control to the user when a CAPTCHA or security verification is detected:
+    1. Pops the browser window to the front on the user's screen.
+    2. Emits an audible system alert chime on Windows.
+    3. Informs the user clearly in logs that control is handed over to them.
+    4. Automatically polls every 1.2 seconds for the CAPTCHA to be resolved.
+    5. The moment the user solves it and the challenge clears, resumes autonomous execution seamlessly!
+    """
+    detection = detect_captcha(page)
+    if not detection["has_captcha"]:
+        return True
+
+    captcha_name = detection.get("type", "Security Check")
+
+    # 1. Bring browser window to front
+    try:
+        page.bring_to_front()
+    except Exception:
+        pass
+
+    # 2. Sound audible alert
+    try:
+        import winsound
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+    except Exception:
+        pass
+
+    # 3. Log clear handover instructions
+    handover_msg_1 = f"🚨 [ACTION REQUIRED] {captcha_name} detected on screen!"
+    handover_msg_2 = "🎮 GIVING CHARGE TO YOUR HANDS: Please click or solve the CAPTCHA in the opened browser window."
+    handover_msg_3 = f"⏳ Automation paused. Waiting for you to pass it (auto-resumes the instant you finish)..."
+    
+    if logs is not None:
+        logs.append(handover_msg_1)
+        logs.append(handover_msg_2)
+        logs.append(handover_msg_3)
+
+    start_time = time.time()
+    last_reminder = start_time
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            if page.is_closed():
+                if logs is not None:
+                    logs.append("ℹ️ Browser window was closed by user.")
+                return False
+
+            # Check if CAPTCHA is still present
+            check = detect_captcha(page)
+            if not check["has_captcha"]:
+                if logs is not None:
+                    logs.append("🎉 CAPTCHA solved & passed! Taking back charge and resuming auto-apply...")
+                # Allow DOM to stabilize after human interaction
+                time.sleep(2.5)
+                return True
+
+            # Periodic log update every 15 seconds
+            elapsed = time.time() - start_time
+            if time.time() - last_reminder >= 15:
+                rem = max(0, int(timeout_seconds - elapsed))
+                if logs is not None:
+                    logs.append(f"⏳ Waiting for you to solve the challenge... ({rem}s remaining)")
+                last_reminder = time.time()
+
+            time.sleep(1.2)
+        except Exception as e:
+            if logs is not None:
+                logs.append(f"Notice while waiting for CAPTCHA: {str(e)[:80]}")
+            break
+
+    if logs is not None:
+        logs.append("⚠️ CAPTCHA handover timed out. Attempting to proceed with application flow...")
+    return False
+
 def auto_apply_to_job(
     job_data: Dict[str, Any], 
     resume_data: Dict[str, Any], 
@@ -840,6 +1015,11 @@ def auto_apply_to_job(
                 page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
                 time.sleep(2.5)
 
+                # 🛡️ CAPTCHA Check 1: Initial landing check & handover if challenge present
+                c_stat = detect_captcha(page)
+                if c_stat["has_captcha"]:
+                    handle_captcha_handover(page, logs, timeout_seconds=90)
+
                 # Check login wall
                 curr_url = page.url.lower()
                 if "register" in curr_url or "login" in curr_url or "account" in curr_url:
@@ -870,6 +1050,11 @@ def auto_apply_to_job(
                             loc.click()
                             logs.append(f"Clicked initial '{sel.replace('button:has-text(', '').replace('a:has-text(', '').rstrip(')')}' button")
                             time.sleep(2)
+                            
+                            # 🛡️ CAPTCHA Check 2: Check if opening application triggered a challenge
+                            c_stat = detect_captcha(page)
+                            if c_stat["has_captcha"]:
+                                handle_captcha_handover(page, logs, timeout_seconds=90)
                             break
                     except Exception:
                         continue
@@ -909,6 +1094,11 @@ def auto_apply_to_job(
                 ]
 
                 for step_num in range(1, MAX_WIZARD_STEPS + 1):
+                    # 🛡️ CAPTCHA Check 3: Check at beginning of wizard step
+                    c_stat = detect_captcha(page)
+                    if c_stat["has_captcha"]:
+                        handle_captcha_handover(page, logs, timeout_seconds=90)
+
                     # 1. Fill all visible inputs, selects, radios, checkboxes on current step
                     stats = fill_all_step_fields(page, resume_data, answers, tailored_letter, resume_file_path, logs)
                     logs.append(f"Step {step_num}: Populated form fields (Inputs: {stats['inputs']}, Radios: {stats['radios']}, Dropdowns: {stats['selects']}, Checkboxes: {stats['checkboxes']}, Files: {stats['files']})")
@@ -924,7 +1114,13 @@ def auto_apply_to_job(
                                     logs.append(f"🚀 Found final submission button ('{sub_sel}')! Executing SUBMIT click...")
                                     sub_btn.click()
                                     submit_clicked = True
-                                    time.sleep(4)
+                                    time.sleep(3)
+                                    
+                                    # 🛡️ CAPTCHA Check 4: Check if submit click triggered a verification modal
+                                    c_stat = detect_captcha(page)
+                                    if c_stat["has_captcha"]:
+                                        handle_captcha_handover(page, logs, timeout_seconds=90)
+                                    time.sleep(1)
                                     break
                             except Exception:
                                 continue
@@ -958,7 +1154,13 @@ def auto_apply_to_job(
                                 logs.append(f"Advancing wizard: Clicked '{next_sel}'...")
                                 next_btn.click()
                                 next_clicked = True
-                                time.sleep(2.5)
+                                time.sleep(2)
+                                
+                                # 🛡️ CAPTCHA Check 5: Check if advancing wizard triggered a challenge
+                                c_stat = detect_captcha(page)
+                                if c_stat["has_captcha"]:
+                                    handle_captcha_handover(page, logs, timeout_seconds=90)
+                                time.sleep(0.5)
                                 break
                         except Exception:
                             continue
