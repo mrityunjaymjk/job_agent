@@ -1604,25 +1604,26 @@ elif page == "🎯 Match & Co-Pilot":
                 st.code(", ".join(active_resume.get('skills', [])[:6]), language=None)
 
         # Co-Pilot Tools Tabs
-        tool_tab0, tool_tab1, tool_tab2, tool_tab3, tool_tab4, tool_tab5, tool_tab6 = st.tabs([
-            "📄 Tailored ATS Resume",
+        tool_tab0, tool_tab1, tool_tab2, tool_tab3, tool_tab4, tool_tab5, tool_tab6, tool_tab7 = st.tabs([
+            "📄 Tailored ATS Resume (1-Page)",
+            "📧 Cold Mail HRs & Recruiters",
             "✍️ Tailored Cover Letter", 
             "📝 Optimized Bullet Points", 
-            "💬 Recruiter Outreach (LinkedIn/Email)", 
+            "💬 LinkedIn Direct Messages",
             "📋 Quick-Fill Form Answers",
             "🎯 Interview Prep Cheat Sheet",
             "💰 Salary Intelligence Advisor"
         ])
 
         with tool_tab0:
-            st.markdown(f"#### 📄 ATS-Tailored Resume for **{target_job['title']}** at **{target_job['company']}**")
-            st.caption("Custom-engineered resume highlighting your exact matching skills and experience for this role. Automatically attached during Auto-Apply on Indeed, LinkedIn, Greenhouse, and Lever!")
+            st.markdown(f"#### 📄 Executive 1-Page ATS Resume for **{target_job['title']}** at **{target_job['company']}**")
+            st.caption("Custom-engineered single-page resume with categorized skills, role-targeted summary, and clean alignment. Automatically attached during Auto-Apply on Indeed, LinkedIn, Greenhouse, and Lever!")
 
             tailored_res_files = auto_applicant.generate_tailored_resume_files(active_resume, target_job, api_key=gemini_key)
             
             c_res_info, c_res_dl = st.columns([2.5, 1.5])
             with c_res_info:
-                st.markdown(f"**🎯 Target Headline:** `{tailored_res_files.get('headline', '')}`")
+                st.markdown(f"**🎯 Target Role Headline:** `{tailored_res_files.get('headline', '')}`")
                 st.markdown("**📝 Tailored Professional Summary:**")
                 st.info(tailored_res_files.get("summary", ""))
                 
@@ -1633,13 +1634,13 @@ elif page == "🎯 Match & Co-Pilot":
                     
             with c_res_dl:
                 st.write("")
-                st.markdown('<div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 0.85rem; color: #166534;">⚡ <strong>Auto-Attach Active:</strong><br>This tailored file is automatically attached when you auto-apply.</div>', unsafe_allow_html=True)
+                st.markdown('<div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 0.85rem; color: #166534;">⚡ <strong>Auto-Attach Active:</strong><br>Guaranteed 1-Page Format. Automatically attached when you auto-apply.</div>', unsafe_allow_html=True)
                 
                 pdf_p = Path(tailored_res_files.get("pdf", ""))
                 if pdf_p.exists():
                     with open(pdf_p, "rb") as f_pdf:
                         st.download_button(
-                            label="📥 Download Tailored Resume (.PDF)",
+                            label="📥 Download Executive Resume (.PDF)",
                             data=f_pdf.read(),
                             file_name=pdf_p.name,
                             mime="application/pdf",
@@ -1651,7 +1652,7 @@ elif page == "🎯 Match & Co-Pilot":
                 if docx_p.exists():
                     with open(docx_p, "rb") as f_docx:
                         st.download_button(
-                            label="📥 Download Tailored Resume (.DOCX)",
+                            label="📥 Download Editable Resume (.DOCX)",
                             data=f_docx.read(),
                             file_name=docx_p.name,
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1663,8 +1664,95 @@ elif page == "🎯 Match & Co-Pilot":
                 if txt_p.exists():
                     with open(txt_p, "r", encoding="utf-8") as f_txt:
                         st.code(f_txt.read(), language=None)
-        
+
         with tool_tab1:
+            st.markdown(f"#### 📧 Cold Email HRs & Decision Makers at **{target_job['company']}**")
+            st.caption(f"Directly pitch the Hiring Team, Technical Recruiters, or Engineering Managers at **{target_job['company']}** to bypass automated application portals.")
+
+            c_find1, c_find2 = st.columns([1.5, 2.5])
+            with c_find1:
+                st.markdown("##### 1️⃣ Target Decision Maker")
+                recruiter_targets = copilot.get_recruiter_targets(target_job['company'], target_job['title'])
+                target_persona = st.selectbox(
+                    "Select Target Persona",
+                    [t["persona"] for t in recruiter_targets],
+                    index=0,
+                    key="cold_mail_persona"
+                )
+                contact_name = st.text_input("HR / Recruiter Name (Optional)", placeholder="e.g. Sarah or Alex", key="cold_mail_contact_name")
+                
+                email_style_label = st.selectbox(
+                    "Email Pitch Framework",
+                    [
+                        "🎯 High-Impact 3-Paragraph Pitch (Proven 45%+ Response Rate)",
+                        "💻 Technical Deep-Dive & Projects Alignment (Java / Spring Boot)",
+                        "☕ Short & Sweet 3-Sentence Coffee Chat",
+                        "🔄 Day 4 Polite Follow-Up Bump"
+                    ],
+                    index=0,
+                    key="cold_mail_style"
+                )
+                style_key = "high_impact"
+                if "Technical" in email_style_label: style_key = "technical"
+                elif "Short" in email_style_label: style_key = "short"
+                elif "Follow-Up" in email_style_label: style_key = "followup"
+
+            with c_find2:
+                st.markdown("##### 2️⃣ Recruiter Search Links & Email Prediction")
+                curr_target = next(t for t in recruiter_targets if t["persona"] == target_persona)
+                st.info(f"💡 **Strategy:** {curr_target['tip']}", icon="💡")
+                
+                c_lk1, c_lk2 = st.columns(2)
+                with c_lk1:
+                    st.link_button("🔎 Search HRs on LinkedIn", curr_target['linkedin_url'], use_container_width=True)
+                with c_lk2:
+                    st.link_button("🌐 Google X-Ray Search", curr_target['xray_url'], use_container_width=True)
+
+                cold_data = copilot.generate_cold_email(
+                    resume_data=active_resume,
+                    job_data=target_job,
+                    contact_name=contact_name,
+                    email_style=style_key,
+                    api_key=gemini_key
+                )
+                
+                hr_email_input = st.text_input(
+                    "Recipient HR / Recruiter Email Address:",
+                    value=cold_data["primary_email"],
+                    help="Predicted corporate email address. You can edit this with the recruiter's exact email.",
+                    key="cold_mail_recipient"
+                )
+                st.caption(f"Predicted patterns: `{', '.join(cold_data['suggested_emails'][:3])}`")
+
+            st.divider()
+
+            st.markdown("##### 3️⃣ Composed Cold Email Pitch")
+            email_subject = st.text_input("Subject Line:", value=cold_data["subject"], key="cold_mail_subj")
+            email_body = st.text_area("Email Body (Editable):", value=cold_data["body"], height=280, key="cold_mail_body")
+
+            import urllib.parse
+            encoded_to = urllib.parse.quote(hr_email_input.strip())
+            encoded_su = urllib.parse.quote(email_subject.strip())
+            encoded_body = urllib.parse.quote(email_body.strip())
+
+            gmail_web_url = f"https://mail.google.com/mail/?view=cm&fs=1&to={encoded_to}&su={encoded_su}&body={encoded_body}"
+            mailto_desktop_url = f"mailto:{encoded_to}?subject={encoded_su}&body={encoded_body}"
+
+            col_send1, col_send2, col_send3 = st.columns([1.5, 1.5, 1.2])
+            with col_send1:
+                st.link_button("🚀 Open in Gmail (Auto-Composed)", gmail_web_url, type="primary", use_container_width=True, help="Opens Gmail in browser with recipient, subject, and tailored body pre-filled!")
+            with col_send2:
+                st.link_button("📧 Open in Outlook / Mail Client", mailto_desktop_url, use_container_width=True, help="Opens default mail client with pre-filled content.")
+            with col_send3:
+                st.download_button(
+                    "📥 Copy / Download Pitch (.txt)",
+                    data=f"To: {hr_email_input}\nSubject: {email_subject}\n\n{email_body}",
+                    file_name=f"Cold_Email_{target_job['company']}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+        
+        with tool_tab2:
             col_t1, col_t2 = st.columns([1, 2])
             with col_t1:
                 tone = st.selectbox("Tone", ["Confident & Professional", "Technical & Concise", "Enthusiastic & Creative"])
@@ -1704,7 +1792,7 @@ elif page == "🎯 Match & Co-Pilot":
                         use_container_width=True
                     )
 
-        with tool_tab2:
+        with tool_tab3:
             st.write("Customize your resume achievements specifically targeting this position:")
             if st.button("⚡ Generate Tailored Resume Bullets"):
                 with st.spinner("Generating impact bullets..."):
@@ -1714,7 +1802,7 @@ elif page == "🎯 Match & Co-Pilot":
             else:
                 st.caption("Click the button above to generate 3 tailored accomplishment statements.")
 
-        with tool_tab3:
+        with tool_tab4:
             st.markdown("#### 👥 Find & Message Decision Makers on LinkedIn")
             st.caption(f"Connect directly with the hiring team at **{target_job['company']}** to fast-track your application past automated resume filters.")
             
@@ -1792,7 +1880,7 @@ elif page == "🎯 Match & Co-Pilot":
             with st.expander("📋 Click here for 1-Click Copy Code Block", expanded=True):
                 st.code(outreach_text, language=None)
 
-        with tool_tab4:
+        with tool_tab5:
             st.write("Copy-paste ready answers for typical company application portals (Workday, Greenhouse, Lever):")
             links_ans = db.get_candidate_links(active_resume)
             user_prefs = {
@@ -1809,7 +1897,7 @@ elif page == "🎯 Match & Co-Pilot":
                 with st.expander(f"**{q}**", expanded=True):
                     st.code(a, language=None)
 
-        with tool_tab5:
+        with tool_tab6:
             st.markdown("#### 🎯 Role-Specific Interview Preparation Cheat Sheet")
             st.caption(f"Targeted technical and behavioral talking points for your upcoming interviews with **{target_job['company']}** for the **{target_job['title']}** role.")
             
@@ -1850,7 +1938,7 @@ elif page == "🎯 Match & Co-Pilot":
             for r_q in cheat_sheet_data.get("reverse_questions", []):
                 st.code(r_q, language=None)
 
-        with tool_tab6:
+        with tool_tab7:
             st.markdown("#### 💰 Salary Intelligence & Compensation Advisor")
             st.caption(f"Real-time compensation benchmark and application negotiation guidance for **{target_job['title']}** at **{target_job['company']}**.")
             

@@ -763,3 +763,141 @@ Keep it punchy, professional, and under 75 words. Do not use generic buzzwords.
         "tailored_bullets": tailored_bullets
     }
 
+
+
+def guess_company_domain(company: str) -> str:
+    """Estimates corporate email domain from company name."""
+    clean = re.sub(r'[^a-zA-Z0-9]', '', company).lower()
+    return f"{clean}.com" if clean else "company.com"
+
+def generate_cold_email(
+    resume_data: Dict[str, Any], 
+    job_data: Dict[str, Any], 
+    contact_name: str = "",
+    email_style: str = "high_impact",
+    api_key: str = ""
+) -> Dict[str, Any]:
+    """
+    Generates a personalized, high-converting cold email targeting HRs, recruiters, 
+    or hiring managers, complete with subject lines and recipient domain predictions.
+    """
+    cand_name = resume_data.get('name', 'Candidate')
+    cand_email = resume_data.get('email', 'mrityunjayk456@gmail.com')
+    cand_phone = resume_data.get('phone', '+91-7972379015')
+    cand_loc = resume_data.get('location', 'Pune, India')
+    
+    links = db.get_candidate_links(resume_data) if 'db' in globals() else {}
+    li_url = links.get('linkedin', 'https://linkedin.com/in/mrityunjayk456')
+    gh_url = links.get('github', 'https://github.com/mrityunjaymjk')
+    
+    company = job_data.get('company', 'your company')
+    title = job_data.get('title', 'Software Engineer')
+    
+    skills = _clean_str_list(resume_data.get('skills', []))
+    top_skill = skills[0] if skills else "Java"
+    top_skills_str = ", ".join(skills[:3]) if skills else "Java, Spring Boot, MySQL"
+    
+    domain = guess_company_domain(company)
+    suggested_emails = [
+        f"careers@{domain}",
+        f"hr@{domain}",
+        f"recruiting@{domain}",
+        f"talent@{domain}"
+    ]
+    if contact_name.strip():
+        first = contact_name.strip().split()[0].lower()
+        suggested_emails.insert(0, f"{first}@{domain}")
+        suggested_emails.insert(1, f"{first}.hr@{domain}")
+
+    salutation = f"Hi {contact_name.strip()}," if contact_name.strip() else "Dear Hiring Team,"
+
+    # 1. High-Impact Pitch (Default)
+    if email_style == "high_impact":
+        subject = f"Application: {title} - {cand_name} ({top_skills_str})"
+        body = f"""{salutation}
+
+I hope this email finds you well. I noticed the {title} position at {company} and wanted to reach out directly to express my strong enthusiasm for joining your engineering team.
+
+As a Backend Developer experienced in {top_skills_str}, I specialize in designing and deploying robust REST APIs and high-availability database architectures. In my recent roles, I have:
+• Engineered secure Spring Boot REST APIs using Controller-Service-Repository architecture, DTOs, and JPA.
+• Built merchant and subscription workflows handling high-volume transactions and third-party integrations (Stripe, Firebase).
+• Implemented Spring Security, JWT authentication, and optimized complex JPQL/MySQL queries for maximum throughput.
+
+Given {company}'s focus on scalable software and engineering excellence, I am confident I can make an immediate, positive impact on your upcoming technical milestones.
+
+I have attached my tailored resume for your review. Would you be open to a brief 10-minute introductory conversation this week to discuss how my skill set aligns with your team's roadmap?
+
+Thank you for your time and consideration.
+
+Best regards,
+
+{cand_name}
+{cand_loc} | {cand_phone} | {cand_email}
+LinkedIn: {li_url} | GitHub: {gh_url}
+"""
+
+    # 2. Value-First Project & Tech Match
+    elif email_style == "technical":
+        subject = f"Technical Alignment: {title} @ {company} ({cand_name})"
+        body = f"""{salutation}
+
+I came across the {title} opening at {company} and was immediately drawn to your engineering stack. 
+
+My hands-on experience is deeply centered on building production-grade services with {top_skills_str}:
+1. API Architecture: Developed modular RESTful endpoints adhering to clean architecture, standardized error handling, and automated Swagger/Postman documentation.
+2. Payment & Data Workflows: Built end-to-end payment gateway integrations, pagination, and multi-filter merchant pipelines.
+3. Database Optimization: Fine-tuned relational schemas and queries in MySQL to ensure low latency and high consistency.
+
+I would love the opportunity to contribute my technical rigor and backend expertise to {company}'s engineering challenges.
+
+My resume is attached for your consideration. Are you available for a brief introductory call in the coming days?
+
+Warm regards,
+
+{cand_name}
+{cand_phone} | {cand_email}
+GitHub: {gh_url} | LinkedIn: {li_url}
+"""
+
+    # 3. Short & Sweet 3-Sentence Coffee Chat
+    elif email_style == "short":
+        subject = f"{cand_name} - {title} Role Inquiry"
+        body = f"""{salutation}
+
+I recently applied for the {title} opening at {company} and wanted to introduce myself directly.
+
+With deep experience building scalable backend services in {top_skills_str}, my background directly aligns with the technical requirements outlined in your job posting.
+
+I've attached my tailored resume—would you or someone on your engineering team be open to a quick 10-minute chat this week?
+
+Best,
+
+{cand_name}
+{cand_phone} | {cand_email} | LinkedIn: {li_url}
+"""
+
+    # 4. Day 4 Follow-Up Bump
+    else:
+        subject = f"Following up: {title} application - {cand_name}"
+        body = f"""{salutation}
+
+I hope you're having a productive week. 
+
+I wanted to quickly follow up on my note regarding the {title} position at {company}. I remain very enthusiastic about the opportunity to contribute my hands-on background in {top_skills_str} to your team.
+
+I understand you must be reviewing many applicants, so I would love to answer any quick screening questions or provide additional technical work samples if helpful.
+
+Looking forward to connecting when time permits!
+
+Best regards,
+
+{cand_name}
+{cand_phone} | {cand_email}
+"""
+
+    return {
+        "subject": subject.strip(),
+        "body": body.strip(),
+        "suggested_emails": suggested_emails,
+        "primary_email": suggested_emails[0]
+    }

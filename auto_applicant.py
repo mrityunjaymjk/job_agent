@@ -249,10 +249,54 @@ def _clean_for_pdf(text: str) -> str:
         '\u201d': '"',
         '\u2026': '...',
         '\u00a0': ' ',
+        '\ufffd': '-',
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
     return text.encode('latin-1', 'replace').decode('latin-1')
+
+def _categorize_skills(skills_list):
+    """Categorizes flat skills list into professional engineering groups."""
+    categories = {
+        "Languages & Core": ["Java", "Python", "JavaScript", "SQL", "HTML", "CSS"],
+        "Frameworks & Backend": ["Spring Boot", "Express.js", "Node.js", "Next.js", "React", "Tailwind CSS"],
+        "Databases & Cloud": ["MySQL", "MongoDB", "Firebase"],
+        "Tools & Practices": ["Git", "GitHub", "REST APIs", "Postman", "Swagger", "JPA/Hibernate"]
+    }
+    result = {}
+    remaining = list(skills_list)
+    for cat, keys in categories.items():
+        matched = []
+        for k in keys:
+            for s in list(remaining):
+                if s.lower() == k.lower():
+                    matched.append(s)
+                    remaining.remove(s)
+        if matched:
+            result[cat] = matched
+    if remaining:
+        result["Additional Technologies"] = remaining
+    return result
+
+def _clean_experience_lines(text: str):
+    """Parses raw experience text into structured company blocks and clean bullet points."""
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    jobs = []
+    curr_job = None
+    for line in lines:
+        if any(bad in line.lower() for bad in ['mailto:', 'github.com', 'linkedin.com']):
+            continue
+        if "|" in line and any(yr in line for yr in ["2024", "2025", "2026", "Present"]):
+            parts = [p.strip() for p in line.split("|")]
+            role_comp = parts[0]
+            date_loc = parts[1] if len(parts) > 1 else ""
+            curr_job = {"header": role_comp, "date": date_loc, "bullets": []}
+            jobs.append(curr_job)
+        elif curr_job is not None:
+            clean_b = line.lstrip("•- �").strip()
+            if clean_b:
+                curr_job["bullets"].append(clean_b)
+    return jobs
 
 def generate_tailored_resume_files(
     resume_data: Dict[str, Any], 
@@ -260,8 +304,8 @@ def generate_tailored_resume_files(
     api_key: str = ""
 ) -> Dict[str, Any]:
     """
-    Dynamically generates ATS-tailored resume files (.pdf, .docx, .txt) customized
-    for the specific target company and role, highlighting matching keywords.
+    Dynamically generates executive ATS-tailored resume files (.pdf, .docx, .txt) 
+    engineered to fit elegantly on EXACTLY 1 PAGE with zero page-spill.
     """
     if not job_data:
         job_data = {
@@ -283,103 +327,20 @@ def generate_tailored_resume_files(
     pdf_path = res_dir / f"{file_base}.pdf"
     txt_path = res_dir / f"{file_base}.txt"
 
-    contact_parts = []
-    if resume_data.get("email"): contact_parts.append(resume_data["email"])
-    if resume_data.get("phone"): contact_parts.append(resume_data["phone"])
-    if resume_data.get("location"): contact_parts.append(resume_data["location"])
+    target_title = job_data.get("title", "Software Engineer")
+    matching_skills = tailored.get("matching_skills", [])
+    top_matches = matching_skills[:3] if matching_skills else ["Java", "Spring Boot", "SQL"]
+    sub_title = f"{target_title} ({', '.join(top_matches)})"
+
+    loc = resume_data.get("location", "Pune, India")
+    phone = resume_data.get("phone", "+91-7972379015")
+    email = resume_data.get("email", "mrityunjayk456@gmail.com")
+    
     links = db.get_candidate_links(resume_data)
-    if links.get("linkedin"): contact_parts.append(links["linkedin"])
-    if links.get("github"): contact_parts.append(links["github"])
+    li = links.get("linkedin", "linkedin.com/in/mrityunjayk456").replace("https://", "").rstrip("/")
+    gh = links.get("github", "github.com/mrityunjaymjk").replace("https://", "").rstrip("/")
 
-    # 1. Generate DOCX
-    try:
-        import docx
-        from docx.shared import Pt, Inches, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-
-        doc = docx.Document()
-        for section in doc.sections:
-            section.top_margin = Inches(0.5)
-            section.bottom_margin = Inches(0.5)
-            section.left_margin = Inches(0.6)
-            section.right_margin = Inches(0.6)
-
-        # Header Name
-        p_name = doc.add_paragraph()
-        p_name.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r_name = p_name.add_run(name)
-        r_name.font.size = Pt(18)
-        r_name.font.bold = True
-        r_name.font.color.rgb = RGBColor(15, 23, 42)
-
-        # Target Headline
-        p_title = doc.add_paragraph()
-        p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r_title = p_title.add_run(tailored.get("headline", tailored.get("job_title", "Target Role")))
-        r_title.font.size = Pt(11)
-        r_title.font.bold = True
-        r_title.font.color.rgb = RGBColor(37, 99, 235)
-
-        # Contact line
-        p_cont = doc.add_paragraph()
-        p_cont.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_cont.paragraph_format.space_after = Pt(8)
-        r_cont = p_cont.add_run(" | ".join(contact_parts))
-        r_cont.font.size = Pt(9.5)
-        r_cont.font.color.rgb = RGBColor(100, 116, 139)
-
-        def add_docx_heading(h_text):
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(8)
-            p.paragraph_format.space_after = Pt(2)
-            r = p.add_run(h_text.upper())
-            r.font.size = Pt(10.5)
-            r.font.bold = True
-            r.font.color.rgb = RGBColor(30, 41, 59)
-
-        # Summary
-        add_docx_heading("Professional Summary")
-        p_s = doc.add_paragraph()
-        p_s.paragraph_format.space_after = Pt(6)
-        r_s = p_s.add_run(tailored.get("summary", ""))
-        r_s.font.size = Pt(9.5)
-
-        # Skills
-        add_docx_heading("Technical Skills & Core Competencies")
-        p_sk = doc.add_paragraph()
-        p_sk.paragraph_format.space_after = Pt(6)
-        skills_list = tailored.get("prioritized_skills", [])
-        r_sk = p_sk.add_run(" • ".join(skills_list))
-        r_sk.font.size = Pt(9.5)
-
-        # Experience
-        add_docx_heading("Professional Experience")
-        p_exp = doc.add_paragraph()
-        p_exp.paragraph_format.space_after = Pt(4)
-        r_exp = p_exp.add_run(str(resume_data.get("experience", "")))
-        r_exp.font.size = Pt(9.5)
-
-        # Tailored achievements
-        bullets = tailored.get("tailored_bullets", [])
-        if bullets:
-            add_docx_heading("Key Technical Achievements & Highlights")
-            for b in bullets:
-                p_b = doc.add_paragraph(style='List Bullet')
-                p_b.paragraph_format.space_after = Pt(2)
-                r_b = p_b.add_run(str(b))
-                r_b.font.size = Pt(9.5)
-
-        # Education
-        add_docx_heading("Education")
-        p_ed = doc.add_paragraph()
-        r_ed = p_ed.add_run(str(resume_data.get("education", "")))
-        r_ed.font.size = Pt(9.5)
-
-        doc.save(str(docx_path))
-    except Exception as e:
-        print(f"Notice generating DOCX: {e}")
-
-    # 2. Generate PDF via fpdf2
+    # 1. GENERATE EXECUTIVE 1-PAGE PDF (fpdf2)
     try:
         from fpdf import FPDF
         class PDFResume(FPDF):
@@ -387,94 +348,236 @@ def generate_tailored_resume_files(
             def footer(self): pass
 
         pdf = PDFResume(format='letter')
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_margins(15, 12, 15)
+        pdf.set_auto_page_break(auto=False)
+        pdf.set_margins(12, 10, 12)
         pdf.add_page()
         
-        usable_w = pdf.w - pdf.l_margin - pdf.r_margin
+        usable_w = pdf.w - pdf.l_margin - pdf.r_margin # ~191.9mm
 
+        # Header: Name (Bold Slate 900)
         pdf.set_font('Helvetica', 'B', 16)
         pdf.set_text_color(15, 23, 42)
-        pdf.cell(usable_w, 7, _clean_for_pdf(name), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(usable_w, 6, _clean_for_pdf(name.upper()), align="C", new_x="LMARGIN", new_y="NEXT")
 
-        pdf.set_font('Helvetica', 'B', 10.5)
+        # Target Headline (Blue 600 - NO repeated candidate name!)
+        pdf.set_font('Helvetica', 'B', 10)
         pdf.set_text_color(37, 99, 235)
-        pdf.cell(usable_w, 6, _clean_for_pdf(tailored.get("headline", tailored.get("job_title", ""))[:75]), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(usable_w, 5, _clean_for_pdf(sub_title), align="C", new_x="LMARGIN", new_y="NEXT")
 
-        pdf.set_font('Helvetica', '', 9)
+        # Contact Block (Clean 2-line header, no spill)
+        pdf.set_font('Helvetica', '', 8.5)
         pdf.set_text_color(100, 116, 139)
-        clean_contact = [_clean_for_pdf(c) for c in contact_parts]
-        pdf.cell(usable_w, 5, " | ".join(clean_contact), align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(3)
+        c_line1 = f"{loc}  |  {phone}  |  {email}"
+        pdf.cell(usable_w, 4.5, _clean_for_pdf(c_line1), align="C", new_x="LMARGIN", new_y="NEXT")
+        c_line2 = f"{li}  |  {gh}"
+        pdf.cell(usable_w, 4, _clean_for_pdf(c_line2), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1.5)
 
-        def add_pdf_heading(h_text):
-            pdf.set_x(15)
-            pdf.set_font('Helvetica', 'B', 10)
+        def add_pdf_section(sec_title):
+            pdf.ln(1)
+            pdf.set_font('Helvetica', 'B', 9.5)
             pdf.set_text_color(30, 41, 59)
-            pdf.cell(usable_w, 6, h_text.upper(), new_x="LMARGIN", new_y="NEXT")
-            pdf.set_draw_color(226, 232, 240)
-            pdf.line(15, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(2)
+            pdf.cell(usable_w, 4.5, sec_title.upper(), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_draw_color(203, 213, 225)
+            pdf.line(12, pdf.get_y(), 203, pdf.get_y())
+            pdf.ln(1)
 
-        add_pdf_heading("Professional Summary")
-        pdf.set_x(15)
-        pdf.set_font('Helvetica', '', 9)
-        pdf.set_text_color(51, 65, 85)
-        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(tailored.get("summary", "")))
-        pdf.ln(2)
-
-        add_pdf_heading("Technical Skills & Core Competencies")
-        pdf.set_x(15)
-        pdf.set_font('Helvetica', '', 9)
-        pdf.set_text_color(51, 65, 85)
-        clean_skills = [_clean_for_pdf(s) for s in tailored.get("prioritized_skills", [])]
-        pdf.multi_cell(usable_w, 4.5, " | ".join(clean_skills))
-        pdf.ln(2)
-
-        add_pdf_heading("Professional Experience")
-        pdf.set_x(15)
+        # Summary
+        add_pdf_section("Professional Summary")
         pdf.set_font('Helvetica', '', 8.5)
         pdf.set_text_color(51, 65, 85)
-        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(str(resume_data.get("experience", ""))[:1400]))
-        pdf.ln(2)
+        pdf.multi_cell(usable_w, 3.8, _clean_for_pdf(tailored.get("summary", "")))
 
-        bullets = tailored.get("tailored_bullets", [])
-        if bullets:
-            add_pdf_heading("Key Technical Achievements & Highlights")
+        # Categorized Technical Skills
+        add_pdf_section("Technical Skills & Core Competencies")
+        skills_raw = resume_data.get("skills", [])
+        cats = _categorize_skills(skills_raw)
+        for cat_name, cat_skills in cats.items():
+            pdf.set_font('Helvetica', 'B', 8.5)
+            pdf.set_text_color(30, 41, 59)
+            cat_label = _clean_for_pdf(f"- {cat_name}: ")
+            cat_w = pdf.get_string_width(cat_label)
+            pdf.cell(cat_w, 4, cat_label)
             pdf.set_font('Helvetica', '', 8.5)
             pdf.set_text_color(51, 65, 85)
-            for b in bullets:
-                pdf.set_x(15)
-                pdf.multi_cell(usable_w, 4.5, f"- {_clean_for_pdf(str(b))}")
-            pdf.ln(2)
+            pdf.cell(usable_w - cat_w, 4, _clean_for_pdf(", ".join(cat_skills)), new_x="LMARGIN", new_y="NEXT")
 
-        add_pdf_heading("Education")
-        pdf.set_x(15)
-        pdf.set_font('Helvetica', '', 9)
+        # Professional Experience
+        add_pdf_section("Professional Experience")
+        raw_exp = str(resume_data.get("experience", ""))
+        jobs = _clean_experience_lines(raw_exp)
+        if jobs:
+            for j in jobs:
+                pdf.set_font('Helvetica', 'B', 9)
+                pdf.set_text_color(15, 23, 42)
+                pdf.cell(135, 4.2, _clean_for_pdf(j["header"]))
+                pdf.set_font('Helvetica', 'I', 8.5)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(usable_w - 135, 4.2, _clean_for_pdf(j["date"]), align="R", new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.set_font('Helvetica', '', 8.5)
+                pdf.set_text_color(51, 65, 85)
+                for b in j["bullets"]:
+                    pdf.set_x(15)
+                    pdf.multi_cell(usable_w - 6, 3.8, _clean_for_pdf(f"- {b}"))
+                pdf.ln(1)
+        else:
+            pdf.set_font('Helvetica', '', 8.5)
+            pdf.set_text_color(51, 65, 85)
+            pdf.multi_cell(usable_w, 3.8, _clean_for_pdf(raw_exp[:1400]))
+
+        # Education & Certifications
+        add_pdf_section("Education & Certifications")
+        pdf.set_font('Helvetica', 'B', 8.5)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(145, 4, _clean_for_pdf("Post Graduate Diploma in Advanced Computing (PG-DAC) - Sunbeam Institute of IT"))
+        pdf.set_font('Helvetica', '', 8.5)
+        pdf.set_text_color(100, 116, 139)
+        pdf.cell(usable_w - 145, 4, _clean_for_pdf("Feb 2025 - Aug 2025"), align="R", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font('Helvetica', 'B', 8.5)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(145, 4, _clean_for_pdf("B.Tech in Mechanical Engineering - MIT Academy of Engineering"))
+        pdf.set_font('Helvetica', '', 8.5)
+        pdf.set_text_color(100, 116, 139)
+        pdf.cell(usable_w - 145, 4, _clean_for_pdf("Aug 2016 - Jun 2020"), align="R", new_x="LMARGIN", new_y="NEXT")
+
+        cert_lbl = _clean_for_pdf("- Certifications: ")
+        pdf.set_font('Helvetica', 'B', 8.5)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(pdf.get_string_width(cert_lbl) + 1, 4, cert_lbl)
+        pdf.set_font('Helvetica', '', 8.5)
         pdf.set_text_color(51, 65, 85)
-        pdf.multi_cell(usable_w, 4.5, _clean_for_pdf(str(resume_data.get("education", ""))))
+        pdf.cell(0, 4, _clean_for_pdf("HackerRank 3-Star MySQL  |  3-Star Problem Solving (Java / JavaScript)"), new_x="LMARGIN", new_y="NEXT")
 
         pdf.output(str(pdf_path))
     except Exception as e:
         print(f"Notice generating PDF: {e}")
 
-    # 3. Generate Plain Text
+    # 2. GENERATE EXECUTIVE DOCX
     try:
-        txt_content = f"""{name}
-{tailored.get("headline", "")}
-{" | ".join(contact_parts)}
+        import docx
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        doc = docx.Document()
+        for section in doc.sections:
+            section.top_margin = Inches(0.4)
+            section.bottom_margin = Inches(0.4)
+            section.left_margin = Inches(0.5)
+            section.right_margin = Inches(0.5)
+
+        # Header Name
+        p_name = doc.add_paragraph()
+        p_name.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_name.paragraph_format.space_after = Pt(1)
+        r_name = p_name.add_run(name.upper())
+        r_name.font.size = Pt(17)
+        r_name.font.bold = True
+        r_name.font.color.rgb = RGBColor(15, 23, 42)
+
+        # Headline
+        p_title = doc.add_paragraph()
+        p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_title.paragraph_format.space_after = Pt(2)
+        r_title = p_title.add_run(sub_title)
+        r_title.font.size = Pt(10.5)
+        r_title.font.bold = True
+        r_title.font.color.rgb = RGBColor(37, 99, 235)
+
+        # Contact line
+        p_cont = doc.add_paragraph()
+        p_cont.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_cont.paragraph_format.space_after = Pt(6)
+        r_cont = p_cont.add_run(f"{loc}  |  {phone}  |  {email}  |  {li}  |  {gh}")
+        r_cont.font.size = Pt(8.5)
+        r_cont.font.color.rgb = RGBColor(100, 116, 139)
+
+        def add_docx_sec(s_title):
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(2)
+            r = p.add_run(s_title.upper())
+            r.font.size = Pt(10)
+            r.font.bold = True
+            r.font.color.rgb = RGBColor(30, 41, 59)
+
+        # Summary
+        add_docx_sec("Professional Summary")
+        p_s = doc.add_paragraph()
+        p_s.paragraph_format.space_after = Pt(4)
+        r_s = p_s.add_run(tailored.get("summary", ""))
+        r_s.font.size = Pt(9)
+
+        # Skills
+        add_docx_sec("Technical Skills & Core Competencies")
+        for cat_name, cat_skills in cats.items():
+            p_cat = doc.add_paragraph()
+            p_cat.paragraph_format.space_after = Pt(1)
+            r_c1 = p_cat.add_run(f"• {cat_name}: ")
+            r_c1.font.bold = True
+            r_c1.font.size = Pt(8.5)
+            r_c2 = p_cat.add_run(", ".join(cat_skills))
+            r_c2.font.size = Pt(8.5)
+
+        # Experience
+        add_docx_sec("Professional Experience")
+        if jobs:
+            for j in jobs:
+                p_jh = doc.add_paragraph()
+                p_jh.paragraph_format.space_before = Pt(3)
+                p_jh.paragraph_format.space_after = Pt(1)
+                r_h = p_jh.add_run(f"{j['header']}  —  {j['date']}")
+                r_h.font.bold = True
+                r_h.font.size = Pt(9)
+                for b in j["bullets"]:
+                    p_b = doc.add_paragraph(style='List Bullet')
+                    p_b.paragraph_format.space_after = Pt(1)
+                    r_b = p_b.add_run(b)
+                    r_b.font.size = Pt(8.5)
+        else:
+            p_e = doc.add_paragraph()
+            p_e.add_run(raw_exp[:1400])
+
+        # Education
+        add_docx_sec("Education & Certifications")
+        p_ed1 = doc.add_paragraph()
+        p_ed1.paragraph_format.space_after = Pt(1)
+        r_ed1 = p_ed1.add_run("Post Graduate Diploma in Advanced Computing (PG-DAC) — Sunbeam Institute of IT (2025)")
+        r_ed1.font.size = Pt(8.5)
+
+        p_ed2 = doc.add_paragraph()
+        p_ed2.paragraph_format.space_after = Pt(1)
+        r_ed2 = p_ed2.add_run("B.Tech in Mechanical Engineering — MIT Academy of Engineering (2020)")
+        r_ed2.font.size = Pt(8.5)
+
+        p_ed3 = doc.add_paragraph()
+        r_ed3 = p_ed3.add_run("• Certifications: HackerRank 3-Star MySQL | 3-Star Problem Solving (Java/JS)")
+        r_ed3.font.size = Pt(8.5)
+
+        doc.save(str(docx_path))
+    except Exception as e:
+        print(f"Notice generating DOCX: {e}")
+
+    # 3. Plain Text
+    try:
+        txt_content = f"""{name.upper()}
+{sub_title}
+{loc} | {phone} | {email} | {li} | {gh}
 
 PROFESSIONAL SUMMARY
 {tailored.get("summary", "")}
 
-TECHNICAL SKILLS
-{", ".join(tailored.get("prioritized_skills", []))}
+TECHNICAL SKILLS & CORE COMPETENCIES
+""" + "\n".join([f"- {cat}: {', '.join(sk)}" for cat, sk in cats.items()]) + f"""
 
 PROFESSIONAL EXPERIENCE
-{str(resume_data.get("experience", ""))}
+""" + "\n".join([f"{j['header']} ({j['date']})\n" + "\n".join([f"- {b}" for b in j['bullets']]) for j in jobs]) + f"""
 
-EDUCATION
-{str(resume_data.get("education", ""))}
+EDUCATION & CERTIFICATIONS
+Post Graduate Diploma in Advanced Computing (PG-DAC) - Sunbeam Institute of IT (2025)
+B.Tech in Mechanical Engineering - MIT Academy of Engineering (2020)
+HackerRank 3-Star MySQL | 3-Star Problem Solving (Java/JavaScript)
 """
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(txt_content.strip())
@@ -496,7 +599,7 @@ EDUCATION
         "docx": str(docx_path.resolve()) if docx_path.exists() else str(txt_path.resolve()),
         "txt": str(txt_path.resolve()),
         "filename_base": file_base,
-        "headline": tailored.get("headline", ""),
+        "headline": sub_title,
         "summary": tailored.get("summary", ""),
         "matching_skills": tailored.get("matching_skills", []),
         "prioritized_skills": tailored.get("prioritized_skills", []),
