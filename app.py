@@ -1017,7 +1017,7 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
         st.markdown(f"📍 {loc} &nbsp;|&nbsp; 🏷️ **{src}** &nbsp;|&nbsp; 💰 {sal}")
     with header_col2:
         if apply_link:
-            st.link_button("🌐 Open Job Portal Directly", apply_link, use_container_width=True)
+            st.link_button("🌐 Open Job Portal Directly", apply_link, width="stretch")
 
     st.divider()
 
@@ -1099,15 +1099,15 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
         """, unsafe_allow_html=True)
 
         if result.get("screenshot") and os.path.exists(result["screenshot"]):
-            st.image(result["screenshot"], caption="📸 Submission Confirmation Proof Captured from Portal", use_container_width=True)
+            st.image(result["screenshot"], caption="📸 Submission Confirmation Proof Captured from Portal", width="stretch")
 
         col_done1, col_done2 = st.columns(2)
         with col_done1:
-            if st.button("✅ Awesome! Close & Refresh", type="primary", use_container_width=True, key=f"btn_modal_done_{job_data.get('id')}"):
+            if st.button("✅ Awesome! Close & Refresh", type="primary", width="stretch", key=f"btn_modal_done_{job_data.get('id')}"):
                 st.rerun()
         with col_done2:
             if apply_link:
-                st.link_button("🌐 Open Job Portal", apply_link, use_container_width=True)
+                st.link_button("🌐 Open Job Portal", apply_link, width="stretch")
 
     else:
         status.update(label="⚠️ Detailed Steps (Click to view execution log)", state="complete", expanded=False)
@@ -1130,11 +1130,11 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
         col_rev1, col_rev2 = st.columns(2)
         with col_rev1:
             if apply_link:
-                st.link_button("🌐 Open Job Portal to Submit", apply_link, type="primary", use_container_width=True)
+                st.link_button("🌐 Open Job Portal to Submit", apply_link, type="primary", width="stretch")
             else:
                 st.info("Portal URL unavailable")
         with col_rev2:
-            if st.button("✅ I Submitted it! Mark as Applied", type="secondary", use_container_width=True, key=f"btn_modal_manual_submit_{job_data.get('id')}"):
+            if st.button("✅ I Submitted it! Mark as Applied", type="secondary", width="stretch", key=f"btn_modal_manual_submit_{job_data.get('id')}"):
                 db.save_or_update_application(
                     job_id=job_data["id"],
                     job_title=job_data["title"],
@@ -1149,7 +1149,7 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
 
         st.caption("After completing the application on the company's website, click **'I Submitted it! Mark as Applied'** to update your tracker.")
 
-        if st.button("Close Dialog (Keep as Needs Review)", use_container_width=True, key=f"btn_modal_close_{job_data.get('id')}"):
+        if st.button("Close Dialog (Keep as Needs Review)", width="stretch", key=f"btn_modal_close_{job_data.get('id')}"):
             st.rerun()
 
     with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=False):
@@ -1176,7 +1176,7 @@ if page == "📄 Resume Profile":
             
             col_load_demo, col_or = st.columns([1, 1])
             with col_load_demo:
-                if st.button("🚀 Load Sample Developer Resume", use_container_width=True):
+                if st.button("🚀 Load Sample Developer Resume", width="stretch"):
                     sample_path = Path(__file__).parent / "sample_resume.txt"
                     if sample_path.exists():
                         with open(sample_path, "r", encoding="utf-8") as f:
@@ -1195,7 +1195,7 @@ if page == "📄 Resume Profile":
                             st.rerun()
 
             if uploaded_file is not None:
-                if st.button("⚡ Parse & Save Resume", type="primary", use_container_width=True):
+                if st.button("⚡ Parse & Save Resume", type="primary", width="stretch"):
                     with st.spinner("Extracting candidate profile and skills..."):
                         parsed = resume_parser.parse_resume(uploaded_file, uploaded_file.name)
                         res_id = db.save_resume(
@@ -1219,7 +1219,7 @@ if page == "📄 Resume Profile":
                 height=220,
                 placeholder="Paste the full text of your resume here (including contact info, experience, skills list/table, and education)..."
             )
-            if st.button("⚡ Parse & Save Pasted Resume", type="primary", use_container_width=True):
+            if st.button("⚡ Parse & Save Pasted Resume", type="primary", width="stretch"):
                 if pasted_text.strip():
                     with st.spinner("Parsing resume details, skills, and sections..."):
                         if hasattr(resume_parser, "parse_resume_text"):
@@ -1386,7 +1386,7 @@ elif page == "🔍 Job Discovery":
             ALL_AVAILABLE_SOURCES, 
             default=DEFAULT_ACTIVE_SOURCES
         )
-        if st.button("🚀 Download Fresh Jobs Now", type="primary", use_container_width=True):
+        if st.button("🚀 Download Fresh Jobs Now", type="primary", width="stretch"):
             with st.spinner(f"Querying {len(sources_selected)} platforms for '{search_query or 'Tech'}' in {fetch_location}..."):
                 fetched = job_scraper.fetch_all_jobs(
                     sources=sources_selected,
@@ -1419,7 +1419,7 @@ elif page == "🔍 Job Discovery":
                 </div>
                 ''', unsafe_allow_html=True)
             with col_bn2:
-                if st.button("⏰ Open Morning Digest ➔", key="btn_goto_hunter_from_discovery", type="primary", use_container_width=True):
+                if st.button("⏰ Open Morning Digest ➔", key="btn_goto_hunter_from_discovery", type="primary", width="stretch"):
                     st.session_state.current_page = "⏰ Auto-Hunter"
                     st.rerun()
 
@@ -1456,17 +1456,17 @@ elif page == "🔍 Job Discovery":
         with col_p_label:
             st.markdown('<div style="padding-top: 6px; font-size: 0.82rem; font-weight: 700; color: #64748B;">Quick Places:</div>', unsafe_allow_html=True)
         with col_p1:
-            st.button("🌐 All", on_click=set_place_preset, args=("",), use_container_width=True, key="btn_loc_all")
+            st.button("🌐 All", on_click=set_place_preset, args=("",), width="stretch", key="btn_loc_all")
         with col_p2:
-            st.button("🇮🇳 India / Pune", on_click=set_place_preset, args=("Pune",), use_container_width=True, key="btn_loc_pune")
+            st.button("🇮🇳 India / Pune", on_click=set_place_preset, args=("Pune",), width="stretch", key="btn_loc_pune")
         with col_p3:
-            st.button("🏠 Remote", on_click=set_place_preset, args=("Remote",), use_container_width=True, key="btn_loc_remote")
+            st.button("🏠 Remote", on_click=set_place_preset, args=("Remote",), width="stretch", key="btn_loc_remote")
         with col_p4:
-            st.button("🏢 US / Americas", on_click=set_place_preset, args=("United States",), use_container_width=True, key="btn_loc_us")
+            st.button("🏢 US / Americas", on_click=set_place_preset, args=("United States",), width="stretch", key="btn_loc_us")
         with col_p5:
-            st.button("🏰 Europe & UK", on_click=set_place_preset, args=("Europe",), use_container_width=True, key="btn_loc_eu")
+            st.button("🏰 Europe & UK", on_click=set_place_preset, args=("Europe",), width="stretch", key="btn_loc_eu")
         with col_p6:
-            st.button("🌏 Asia & SG", on_click=set_place_preset, args=("Singapore",), use_container_width=True, key="btn_loc_asia")
+            st.button("🌏 Asia & SG", on_click=set_place_preset, args=("Singapore",), width="stretch", key="btn_loc_asia")
 
         # Platform Multiselect Filter
         platform_options = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow", "WeWorkRemotely"]
@@ -1589,16 +1589,16 @@ elif page == "🔍 Job Discovery":
                 # Action Buttons
                 btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1.3, 1.1, 0.8, 1])
                 with btn_col1:
-                    if st.button(f"🚀 Auto-Apply", key=f"auto_{job['id']}", type="primary", use_container_width=True, help="Autonomous engine: auto-fills all steps and submits this application!"):
+                    if st.button(f"🚀 Auto-Apply", key=f"auto_{job['id']}", type="primary", width="stretch", help="Autonomous engine: auto-fills all steps and submits this application!"):
                         gemini_key = get_gemini_api_key()
                         render_auto_apply_modal(job, active_resume, gemini_key, auto_submit=True)
                 with btn_col2:
-                    if st.button(f"🎯 Co-Pilot", key=f"copilot_{job['id']}", use_container_width=True, help="Review match breakdown and tailor cover letters"):
+                    if st.button(f"🎯 Co-Pilot", key=f"copilot_{job['id']}", width="stretch", help="Review match breakdown and tailor cover letters"):
                         st.session_state.selected_job = job
                         st.session_state.nav_redirect = "🎯 Match & Co-Pilot"
                         st.rerun()
                 with btn_col3:
-                    if st.button(f"💾 Save", key=f"save_{job['id']}", use_container_width=True):
+                    if st.button(f"💾 Save", key=f"save_{job['id']}", width="stretch"):
                         db.save_or_update_application(
                             job_id=job['id'],
                             job_title=job['title'],
@@ -1612,7 +1612,7 @@ elif page == "🔍 Job Discovery":
                 with btn_col4:
                     apply_link = job.get('apply_url') or job.get('url')
                     if apply_link:
-                        st.link_button("🔗 Job Link", apply_link, use_container_width=True)
+                        st.link_button("🔗 Job Link", apply_link, width="stretch")
 
 # ================= PAGE: AUTO-HUNTER & MORNING DIGEST =================
 elif page == "⏰ Auto-Hunter":
@@ -1641,13 +1641,13 @@ elif page == "⏰ Auto-Hunter":
     act_col1, act_col2, act_col3, act_col4 = st.columns([1.5, 1.8, 1.3, 1.0])
     
     with act_col1:
-        run_now_clicked = st.button("⚡ Run Auto-Hunter Now", type="primary", use_container_width=True, help="Immediately crawls Naukri, Indeed, LinkedIn, and Wellfound for fresh matching jobs!")
+        run_now_clicked = st.button("⚡ Run Auto-Hunter Now", type="primary", width="stretch", help="Immediately crawls Naukri, Indeed, LinkedIn, and Wellfound for fresh matching jobs!")
     with act_col2:
-        batch_apply_clicked = st.button("🚀 1-Click Auto-Apply (Top 3)", type="secondary", use_container_width=True, help="Autonomous engine applies to the top 3 high-match positions in queue using your tailored 1-page resume!")
+        batch_apply_clicked = st.button("🚀 1-Click Auto-Apply (Top 3)", type="secondary", width="stretch", help="Autonomous engine applies to the top 3 high-match positions in queue using your tailored 1-page resume!")
     with act_col3:
-        save_all_clicked = st.button("📥 Save All to Tracker", use_container_width=True, help="Imports all current high-matching queue items into Application Tracker under 'Saved'")
+        save_all_clicked = st.button("📥 Save All to Tracker", width="stretch", help="Imports all current high-matching queue items into Application Tracker under 'Saved'")
     with act_col4:
-        clear_queue_clicked = st.button("🧹 Clear Queue", use_container_width=True, help="Removes all queued positions from Morning Digest")
+        clear_queue_clicked = st.button("🧹 Clear Queue", width="stretch", help="Removes all queued positions from Morning Digest")
 
     if run_now_clicked:
         with st.status("🔍 Auto-Hunter scouting platforms for fresh positions...", expanded=True) as status_box:
@@ -1776,7 +1776,7 @@ elif page == "⏰ Auto-Hunter":
                     # Action Buttons
                     btn1, btn2, btn3, btn4 = st.columns([1.5, 1.5, 1.5, 0.8])
                     with btn1:
-                        if st.button("🚀 1-Click Auto-Apply", key=f"btn_apply_{q_id}", type="primary", use_container_width=True):
+                        if st.button("🚀 1-Click Auto-Apply", key=f"btn_apply_{q_id}", type="primary", width="stretch"):
                             job_obj = db.get_job_by_id(q_id) or {
                                 "id": q_id,
                                 "title": q.get("job_title"),
@@ -1789,7 +1789,7 @@ elif page == "⏰ Auto-Hunter":
                             render_auto_apply_modal(job_obj, active_resume, gemini_key, auto_submit=True)
                     
                     with btn2:
-                        if st.button("🎯 Tailor Resume & Materials", key=f"btn_tailor_{q_id}", use_container_width=True):
+                        if st.button("🎯 Tailor Resume & Materials", key=f"btn_tailor_{q_id}", width="stretch"):
                             job_obj = db.get_job_by_id(q_id) or {
                                 "id": q_id,
                                 "title": q.get("job_title"),
@@ -1806,12 +1806,12 @@ elif page == "⏰ Auto-Hunter":
                     with btn3:
                         apply_url_val = q.get("apply_url") or q.get("url")
                         if apply_url_val:
-                            st.link_button("🌐 Open Job Portal", apply_url_val, use_container_width=True)
+                            st.link_button("🌐 Open Job Portal", apply_url_val, width="stretch")
                         else:
-                            st.button("Saved", disabled=True, use_container_width=True)
+                            st.button("Saved", disabled=True, width="stretch")
                     
                     with btn4:
-                        if st.button("❌", key=f"btn_dismiss_{q_id}", help="Dismiss from Morning Digest", use_container_width=True):
+                        if st.button("❌", key=f"btn_dismiss_{q_id}", help="Dismiss from Morning Digest", width="stretch"):
                             db.dismiss_hunter_queue_item(q_id)
                             st.toast(f"Dismissed {q.get('job_title')}")
                             st.rerun()
@@ -1845,7 +1845,7 @@ elif page == "⏰ Auto-Hunter":
                 label_visibility="collapsed"
             )
 
-            save_cfg_btn = st.form_submit_button("💾 Save Auto-Hunter Settings", type="primary", use_container_width=True)
+            save_cfg_btn = st.form_submit_button("💾 Save Auto-Hunter Settings", type="primary", width="stretch")
             if save_cfg_btn:
                 auto_hunter.save_hunter_settings({
                     "enabled": cfg_enabled,
@@ -1876,7 +1876,7 @@ elif page == "⏰ Auto-Hunter":
                     df_runs[col] = ""
             df_display = df_runs[cols_needed].copy()
             df_display.columns = ["Timestamp", "Keywords", "Location", "Scanned", "New Added", "High Matches", "Status"]
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            st.dataframe(df_display, width="stretch", hide_index=True)
             
             with st.expander("🔍 View Detailed Notes for Recent Runs"):
                 for r in runs[:5]:
@@ -2057,13 +2057,13 @@ elif page == "🎯 Match & Co-Pilot":
             with j_col2:
                 auto_mode = st.toggle("🚀 Autonomous Mode (Auto-Submits)", value=True, help="When ON, the bot fills all steps, answers screening questions, checks terms, and clicks Submit Application for you automatically!")
                 if auto_mode:
-                    auto_pilot_clicked = st.button("🚀 Run Autonomous Auto-Apply", type="primary", use_container_width=True, help="Autonomous engine: opens portal, fills all wizard steps, and clicks Submit Application automatically!")
+                    auto_pilot_clicked = st.button("🚀 Run Autonomous Auto-Apply", type="primary", width="stretch", help="Autonomous engine: opens portal, fills all wizard steps, and clicks Submit Application automatically!")
                 else:
-                    auto_pilot_clicked = st.button("👀 Co-Pilot Assist (Pre-fill & Review)", type="secondary", use_container_width=True, help="Pre-fills your information and leaves browser open for manual review and submission.")
+                    auto_pilot_clicked = st.button("👀 Co-Pilot Assist (Pre-fill & Review)", type="secondary", width="stretch", help="Pre-fills your information and leaves browser open for manual review and submission.")
                 
                 apply_url = target_job.get('apply_url') or target_job.get('url')
                 if apply_url:
-                    st.link_button("🌐 Open Job Link", apply_url, use_container_width=True)
+                    st.link_button("🌐 Open Job Link", apply_url, width="stretch")
 
         if st.session_state.get("trigger_auto_apply"):
             auto_pilot_clicked = True
@@ -2213,7 +2213,7 @@ elif page == "🎯 Match & Co-Pilot":
                             file_name=pdf_p.name,
                             mime="application/pdf",
                             type="primary",
-                            use_container_width=True
+                            width="stretch"
                         )
                         
                 docx_p = Path(tailored_res_files.get("docx", ""))
@@ -2224,7 +2224,7 @@ elif page == "🎯 Match & Co-Pilot":
                             data=f_docx.read(),
                             file_name=docx_p.name,
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
+                            width="stretch"
                         )
 
             with st.expander("👀 View Full Tailored Plaintext Resume", expanded=False):
@@ -2272,9 +2272,9 @@ elif page == "🎯 Match & Co-Pilot":
                 
                 c_lk1, c_lk2 = st.columns(2)
                 with c_lk1:
-                    st.link_button("🔎 Search HRs on LinkedIn", curr_target['linkedin_url'], use_container_width=True)
+                    st.link_button("🔎 Search HRs on LinkedIn", curr_target['linkedin_url'], width="stretch")
                 with c_lk2:
-                    st.link_button("🌐 Google X-Ray Search", curr_target['xray_url'], use_container_width=True)
+                    st.link_button("🌐 Google X-Ray Search", curr_target['xray_url'], width="stretch")
 
                 cold_data = copilot.generate_cold_email(
                     resume_data=active_resume,
@@ -2308,23 +2308,23 @@ elif page == "🎯 Match & Co-Pilot":
 
             col_send1, col_send2, col_send3 = st.columns([1.5, 1.5, 1.2])
             with col_send1:
-                st.link_button("🚀 Open in Gmail (Auto-Composed)", gmail_web_url, type="primary", use_container_width=True, help="Opens Gmail in browser with recipient, subject, and tailored body pre-filled!")
+                st.link_button("🚀 Open in Gmail (Auto-Composed)", gmail_web_url, type="primary", width="stretch", help="Opens Gmail in browser with recipient, subject, and tailored body pre-filled!")
             with col_send2:
-                st.link_button("📧 Open in Outlook / Mail Client", mailto_desktop_url, use_container_width=True, help="Opens default mail client with pre-filled content.")
+                st.link_button("📧 Open in Outlook / Mail Client", mailto_desktop_url, width="stretch", help="Opens default mail client with pre-filled content.")
             with col_send3:
                 st.download_button(
                     "📥 Copy / Download Pitch (.txt)",
                     data=f"To: {hr_email_input}\nSubject: {email_subject}\n\n{email_body}",
                     file_name=f"Cold_Email_{target_job['company']}.txt",
                     mime="text/plain",
-                    use_container_width=True
+                    width="stretch"
                 )
         
         with tool_tab2:
             col_t1, col_t2 = st.columns([1, 2])
             with col_t1:
                 tone = st.selectbox("Tone", ["Confident & Professional", "Technical & Concise", "Enthusiastic & Creative"])
-                gen_letter_btn = st.button("Generate Cover Letter", type="primary", use_container_width=True)
+                gen_letter_btn = st.button("Generate Cover Letter", type="primary", width="stretch")
             
             # Fetch existing saved application for this job if any
             existing_app = db.get_application_by_job_id(target_job['id'])
@@ -2357,7 +2357,7 @@ elif page == "🎯 Match & Co-Pilot":
                         data=letter_text,
                         file_name=f"Cover_Letter_{target_job['company']}.txt",
                         mime="text/plain",
-                        use_container_width=True
+                        width="stretch"
                     )
 
         with tool_tab3:
@@ -2389,9 +2389,9 @@ elif page == "🎯 Match & Co-Pilot":
                         
                         btn_c1, btn_c2 = st.columns(2)
                         with btn_c1:
-                            st.link_button("🔗 Open on LinkedIn", target['linkedin_url'], use_container_width=True)
+                            st.link_button("🔗 Open on LinkedIn", target['linkedin_url'], width="stretch")
                         with btn_c2:
-                            st.link_button("🔎 Google X-Ray Search", target['xray_url'], use_container_width=True)
+                            st.link_button("🔎 Google X-Ray Search", target['xray_url'], width="stretch")
 
             # Optional AI Intel from Gemini
             if use_ai and gemini_key:
@@ -2471,7 +2471,7 @@ elif page == "🎯 Match & Co-Pilot":
             
             c_int1, c_int2 = st.columns([2.5, 1])
             with c_int2:
-                regen_interview = st.button("🔄 Refresh Cheat Sheet", use_container_width=True)
+                regen_interview = st.button("🔄 Refresh Cheat Sheet", width="stretch")
                 
             interview_cache_key = f"interview_prep_{target_job['id']}_{active_resume.get('name', '')}"
             if regen_interview or interview_cache_key not in st.session_state:
@@ -2616,7 +2616,7 @@ elif page == "📊 Application Tracker":
                 data=csv_data,
                 file_name=f"job_applications_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
                 help="Export all tracked jobs and application stages to a clean CSV."
             )
 
@@ -2646,7 +2646,7 @@ elif page == "📊 Application Tracker":
                                 st.write(f"Status: `{app['status']}`")
                             with c3:
                                 if app.get('apply_url'):
-                                    st.link_button("🔗 Job Link", app['apply_url'], use_container_width=True)
+                                    st.link_button("🔗 Job Link", app['apply_url'], width="stretch")
                             with c4:
                                 if st.button("🗑️", key=f"del_{app['id']}", help="Delete application"):
                                     db.delete_application(app['id'])
@@ -2756,7 +2756,7 @@ elif page == "⚙️ Settings":
         with col_login_btn:
             st.write("")
             st.write("")
-            if st.button("🚀 Open Browser Window", type="primary", use_container_width=True, help="Opens the persistent browser so you can log in once. Your session will be remembered forever!"):
+            if st.button("🚀 Open Browser Window", type="primary", width="stretch", help="Opens the persistent browser so you can log in once. Your session will be remembered forever!"):
                 url_to_open = custom_url if ("Custom URL" in target_site and custom_url) else target_site.split("(")[-1].rstrip(")")
                 with st.spinner("Opening browser window on your screen... Feel free to log in!"):
                     res = auto_applicant.open_persistent_browser_manager(target_url=url_to_open, wait_seconds=180)
@@ -2770,7 +2770,7 @@ elif page == "⚙️ Settings":
         with col_sync1:
             st.caption("Pulls `Local State`, `Cookies`, `Local Storage` and `IndexedDB` from `C:\\Users\\hp\\AppData\\Local\\Google\\Chrome\\User Data\\Default`.")
         with col_sync2:
-            if st.button("🔄 Import from Chrome", use_container_width=True, help="Import your existing Chrome cookies and logins into the agent's browser profile."):
+            if st.button("🔄 Import from Chrome", width="stretch", help="Import your existing Chrome cookies and logins into the agent's browser profile."):
                 with st.spinner("Importing Chrome cache and cookies..."):
                     sync_res = auto_applicant.sync_chrome_cache(force=True)
                     if sync_res.get("success"):

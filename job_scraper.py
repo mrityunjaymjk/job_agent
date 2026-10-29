@@ -334,6 +334,8 @@ def fetch_naukri_jobs(search_query: str = "Java Developer", location: str = "Pun
     """Fetches live on-site, hybrid, and local jobs from Naukri.com."""
     jobs = []
     try:
+        import logging
+        logging.getLogger("jobspy.naukri").setLevel(logging.CRITICAL)
         from jobspy import scrape_jobs
         q = search_query.strip() if search_query else "Software Engineer"
         loc = location.strip() if location and location.lower() != "remote" else "India"
@@ -387,20 +389,53 @@ def fetch_naukri_jobs(search_query: str = "Java Developer", location: str = "Pun
     return jobs
 
 def fetch_indeed_jobs(search_query: str = "Software Engineer", location: str = "Pune", limit: int = 25) -> List[Dict[str, Any]]:
-    """Fetches live on-site, hybrid, and local jobs from Indeed."""
+    """Fetches live on-site, hybrid, and local jobs from Indeed with automatic resilience against upstream malformed responses."""
     jobs = []
     try:
+        import logging
+        # Suppress upstream JobSpy raw API surrogate/malformed escape error logs
+        logging.getLogger("jobspy.indeed").setLevel(logging.CRITICAL)
+        logging.getLogger("jobspy").setLevel(logging.ERROR)
+
         from jobspy import scrape_jobs
         q = search_query.strip() if search_query else "Software Engineer"
         loc = location.strip() if location and location.lower() != "remote" else "Pune, India"
         country = resolve_indeed_country(loc)
-        df = scrape_jobs(
-            site_name=["indeed"],
-            search_term=q,
-            location=loc,
-            country_indeed=country,
-            results_wanted=min(limit, 35)
-        )
+
+        df = None
+        try:
+            df = scrape_jobs(
+                site_name=["indeed"],
+                search_term=q,
+                location=loc,
+                country_indeed=country,
+                results_wanted=min(limit, 30)
+            )
+        except Exception:
+            pass
+
+        # Resilient fallback: If Indeed returned empty due to an upstream malformed response on this exact search term:
+        if df is None or df.empty:
+            fallback_q = None
+            if "java" in q.lower() and "software" not in q.lower():
+                fallback_q = q.replace("Developer", "Software Engineer").replace("developer", "Software Engineer").strip()
+            elif "developer" in q.lower() and "software" not in q.lower():
+                fallback_q = f"Software {q}"
+            elif "engineer" in q.lower() and "software" not in q.lower():
+                fallback_q = f"Software {q}"
+
+            if fallback_q and fallback_q.lower() != q.lower():
+                try:
+                    df = scrape_jobs(
+                        site_name=["indeed"],
+                        search_term=fallback_q,
+                        location=loc,
+                        country_indeed=country,
+                        results_wanted=min(limit, 25)
+                    )
+                except Exception:
+                    pass
+
         if df is not None and not df.empty:
             for _, r in df.iterrows():
                 title = str(r.get("title", "")).strip()
