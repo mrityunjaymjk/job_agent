@@ -1373,7 +1373,8 @@ def auto_apply_to_job(
     api_key: str = "",
     auto_submit: bool = True,
     keep_open_seconds: int = 90,
-    progress_callback: Optional[Any] = None
+    progress_callback: Optional[Any] = None,
+    headless: Optional[bool] = None
 ) -> Dict[str, Any]:
     """
     Fully Autonomous End-to-End Job Application Engine:
@@ -1456,9 +1457,15 @@ def auto_apply_to_job(
     p_dir = get_browser_profile_path()
     ensure_cache_seeded()
 
-    # Detect headless cloud vs local desktop
+    # Detect headless background mode vs visible desktop window
     is_cloud = os.environ.get("STREAMLIT_SHARING_MODE") is not None or (os.name != "nt" and os.environ.get("DISPLAY") is None)
-    headless_mode = bool(is_cloud)
+    if is_cloud:
+        headless_mode = True
+    elif headless is not None:
+        headless_mode = bool(headless)
+    else:
+        # Defaults to True (Silent background execution, no intrusive desktop popup windows)
+        headless_mode = db.get_setting("browser_headless", "1") == "1" 
 
     notify("🍪 Step 3/5: Browser Profile", "Loading persistent session cache & cookies...")
     logs.append(f"🎯 Target: {job_data['title']} at {job_data['company']}")
@@ -1472,6 +1479,8 @@ def auto_apply_to_job(
     if is_cloud:
         logs.append("☁️ Running on Streamlit Community Cloud (Headless Mode)")
         ensure_playwright_browsers()
+    elif headless_mode:
+        logs.append("🤖 Running in Silent Background Mode (Headless — no intrusive desktop popup windows)")
     else:
         logs.append("🍪 Loaded persistent browser profile & cache memory (saved logins active)")
         logs.append("🌐 Launching visible Chrome browser on your screen...")
@@ -1495,15 +1504,16 @@ def auto_apply_to_job(
             driver_proc = None
 
         launch_args = [
-            "--start-maximized" if not headless_mode else "--headless",
+            "--start-maximized" if not headless_mode else "--headless=new",
             "--disable-blink-features=AutomationControlled",
-            "--no-sandbox",
             "--disable-dev-shm-usage",
             "--disable-background-networking",
             "--disable-breakpad",
             "--disable-hang-monitor",
             "--no-first-run"
         ]
+        if os.name != "nt":
+            launch_args.append("--no-sandbox")
         try:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(p_dir),

@@ -1069,13 +1069,15 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
 
     result = {}
     try:
+        is_headless = db.get_setting("browser_headless", "1") == "1"
         result = auto_applicant.auto_apply_to_job(
             job_data=job_data,
             resume_data=resume_data,
             api_key=api_key,
             auto_submit=auto_submit,
             keep_open_seconds=45,
-            progress_callback=on_progress
+            progress_callback=on_progress,
+            headless=is_headless
         )
     except Exception as e:
         result = {
@@ -2724,8 +2726,22 @@ elif page == "⚙️ Settings":
             st.rerun()
 
     with st.container(border=True):
-        st.subheader("🍪 Browser Sessions & Cache Memory Manager")
-        st.write("Never sign in repeatedly across platforms. The agent maintains a persistent Chrome browser profile that securely keeps your session tokens, cookies, and cache memory preserved across all auto-applications.")
+        st.subheader("🍪 Browser Sessions & Automation Mode")
+        st.write("Configure how the autonomous application engine runs on your computer:")
+        
+        curr_headless = db.get_setting("browser_headless", "1") == "1"
+        new_headless = st.toggle(
+            "🤖 Silent Background Mode (No Desktop Popup Windows)",
+            value=curr_headless,
+            help="When enabled (default & recommended), the auto-apply bot runs quietly in the background without popping up desktop browser windows. Disable only if you wish to watch the browser live."
+        )
+        if new_headless != curr_headless:
+            db.set_setting("browser_headless", "1" if new_headless else "0")
+            st.success(f"Browser mode updated: {'Silent Background Mode (Headless)' if new_headless else 'Visible Desktop Window'} active!")
+            st.rerun()
+            
+        st.divider()
+        st.write("The agent maintains a persistent Chrome browser profile that securely keeps your session tokens, cookies, and cache memory preserved across all auto-applications.")
         
         prof_status = auto_applicant.get_profile_status()
         
