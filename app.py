@@ -1007,34 +1007,52 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
     loc = job_data.get("location", "Remote")
     src = job_data.get("source", "Web")
     sal = job_data.get("salary", "Salary Not Disclosed")
+    apply_link = job_data.get("apply_url") or job_data.get("url", "")
 
-    st.markdown(f"### {title} @ **{company}**")
-    st.markdown(f"📍 {loc} &nbsp;|&nbsp; 🏷️ **{src}** &nbsp;|&nbsp; 💰 {sal}")
+    header_col1, header_col2 = st.columns([2.5, 1.2])
+    with header_col1:
+        st.markdown(f"### {title} @ **{company}**")
+        st.markdown(f"📍 {loc} &nbsp;|&nbsp; 🏷️ **{src}** &nbsp;|&nbsp; 💰 {sal}")
+    with header_col2:
+        if apply_link:
+            st.link_button("🌐 Open Job Portal Directly", apply_link, use_container_width=True)
+
     st.divider()
 
     mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_submit else "Co-Pilot Assist (Pre-Fill & Review)"
-    with st.status(f"🤖 Running {mode_label}...", expanded=True) as status:
-        st.write("1. ✍️ Tailoring 1-page ATS resume & cover letter specifically for this role...")
-        st.write("2. 🍪 Loading persistent browser profile & session cookies (saved logins active)...")
-        st.write("3. 🖥️ Launching browser context on your screen...")
-        st.write("4. 📝 Auto-filling contact info, experience & answering screening questions...")
-        if auto_submit:
-            st.write("5. 🚀 Executing 'Submit Application' and verifying platform confirmation receipt...")
-        else:
-            st.write("5. 👀 Form pre-filled! Browser opened for your manual review.")
+    status = st.status(f"🤖 Initializing {mode_label}...", expanded=True)
 
+    # Dynamic live progress callback that updates st.status in real-time
+    def on_progress(step_name: str, detail: str = ""):
+        with status:
+            if detail:
+                st.write(f"➡️ **{step_name}**: `{detail}`")
+            else:
+                st.write(f"➡️ **{step_name}**")
+
+    result = {}
+    try:
         result = auto_applicant.auto_apply_to_job(
             job_data=job_data,
             resume_data=resume_data,
             api_key=api_key,
             auto_submit=auto_submit,
-            keep_open_seconds=90
+            keep_open_seconds=45,
+            progress_callback=on_progress
         )
 
         if result.get("submitted"):
             status.update(label="🎉 Application Verified & Submitted!", state="complete", expanded=False)
         else:
             status.update(label="⚠️ Application Needs Review (Confirmation Not Detected)", state="complete", expanded=False)
+    except Exception as e:
+        status.update(label=f"⚠️ Portal Notice: {str(e)[:60]}", state="error", expanded=True)
+        result = {
+            "success": False,
+            "submitted": False,
+            "logs": [f"Notice during autonomous run: {str(e)}"],
+            "tailored_letter": ""
+        }
 
     cand_email = resume_data.get("email") or db.get_setting("user_email", "mrityunjayk456@gmail.com")
 
@@ -1062,7 +1080,6 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
             if st.button("✅ Awesome! Close & Refresh", type="primary", use_container_width=True, key=f"btn_modal_done_{job_data.get('id')}"):
                 st.rerun()
         with col_done2:
-            apply_link = job_data.get("apply_url") or job_data.get("url")
             if apply_link:
                 st.link_button("🌐 Open Job Portal", apply_link, use_container_width=True)
 

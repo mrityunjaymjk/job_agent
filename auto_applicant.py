@@ -1181,7 +1181,8 @@ def detect_captcha(page) -> Dict[str, Any]:
 def handle_captcha_handover(
     page, 
     logs: Optional[List[str]] = None, 
-    timeout_seconds: int = 90
+    timeout_seconds: int = 35,
+    progress_callback: Optional[Any] = None
 ) -> bool:
     """
     Hands over control to the user when a CAPTCHA or security verification is detected:
@@ -1215,6 +1216,11 @@ def handle_captcha_handover(
     handover_msg_2 = "🎮 GIVING CHARGE TO YOUR HANDS: Please click or solve the CAPTCHA in the opened browser window."
     handover_msg_3 = f"⏳ Automation paused. Waiting for you to pass it (auto-resumes the instant you finish)..."
     
+    if progress_callback:
+        try:
+            progress_callback(f"🚨 {captcha_name} Active", "Browser window in front — please solve verification in Chrome")
+        except Exception:
+            pass
     if logs is not None:
         logs.append(handover_msg_1)
         logs.append(handover_msg_2)
@@ -1241,10 +1247,15 @@ def handle_captcha_handover(
 
             # Periodic log update every 15 seconds
             elapsed = time.time() - start_time
-            if time.time() - last_reminder >= 15:
+            if time.time() - last_reminder >= 8:
                 rem = max(0, int(timeout_seconds - elapsed))
                 if logs is not None:
                     logs.append(f"⏳ Waiting for you to solve the challenge... ({rem}s remaining)")
+                if progress_callback:
+                    try:
+                        progress_callback("⏳ Waiting for Verification", f"Please solve challenge in browser ({rem}s remaining)")
+                    except Exception:
+                        pass
                 last_reminder = time.time()
 
             time.sleep(1.2)
@@ -1275,7 +1286,7 @@ def detect_login_wall(page) -> Dict[str, Any]:
         pass
     return {"needs_login": False, "platform": ""}
 
-def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None, timeout_seconds: int = 120) -> bool:
+def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None, timeout_seconds: int = 40, progress_callback: Optional[Any] = None) -> bool:
     """
     Hands over browser to user to complete one-time login; saves cookies permanently to disk.
     """
@@ -1289,6 +1300,11 @@ def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None,
     except Exception:
         pass
 
+    if progress_callback:
+        try:
+            progress_callback(f"🔑 {platform} Sign-In Required", "Browser in front — please log in (cookies saved permanently)")
+        except Exception:
+            pass
     if logs is not None:
         logs.append(f"🔑 [ACTION REQUIRED] {platform} Sign-In Required!")
         logs.append("🎮 GIVING CHARGE TO YOUR HANDS: Please sign in to your account in the opened window.")
@@ -1307,10 +1323,15 @@ def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None,
                     logs.append(f"🎉 Successfully signed in to {platform}! Session saved to disk. Resuming auto-apply...")
                 time.sleep(2)
                 return True
-            if time.time() - last_reminder >= 20:
+            if time.time() - last_reminder >= 8:
                 rem = max(0, int(timeout_seconds - (time.time() - start_time)))
                 if logs is not None:
                     logs.append(f"⏳ Waiting for your login in the browser window... ({rem}s remaining)")
+                if progress_callback:
+                    try:
+                        progress_callback(f"⏳ Waiting for {platform} Sign-In", f"Window active ({rem}s remaining)")
+                    except Exception:
+                        pass
                 last_reminder = time.time()
             time.sleep(1.5)
         except Exception:
@@ -1320,12 +1341,39 @@ def handle_login_handover(page, platform: str, logs: Optional[List[str]] = None,
         logs.append(f"⚠️ Login handover timed out for {platform}.")
     return False
 
+
+def resolve_outbound_aggregator_url(page, logs: Optional[List[str]] = None) -> Optional[str]:
+    """
+    On job aggregator / listing boards (Jobicy, RemoteOK, Remotive, etc.) that link to external employer ATS portals,
+    locates the outbound apply link (Greenhouse, Lever, Workday, Ashby, employer career site).
+    """
+    try:
+        curr_url = page.url.lower()
+        if any(agg in curr_url for agg in ["jobicy.com", "remoteok.com", "remotive.com"]):
+            links = page.locator('a[href^="http"]').all()
+            for l in links:
+                try:
+                    href = l.get_attribute("href") or ""
+                    href_l = href.lower()
+                    if any(agg in href_l for agg in ["jobicy.com", "remoteok.com", "remotive.com"]):
+                        continue
+                    if any(ats in href_l for ats in ["greenhouse.io", "lever.co", "workday", "ashbyhq.com", "smartrecruiters.com", "breezy.hr", "careers", "apply"]):
+                        if logs is not None:
+                            logs.append(f"🔗 Detected outbound company application portal: {href}")
+                        return href
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
 def auto_apply_to_job(
     job_data: Dict[str, Any], 
     resume_data: Dict[str, Any], 
     api_key: str = "",
     auto_submit: bool = True,
-    keep_open_seconds: int = 90
+    keep_open_seconds: int = 90,
+    progress_callback: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Fully Autonomous End-to-End Job Application Engine:
@@ -1344,6 +1392,18 @@ def auto_apply_to_job(
     target_url = job_data.get("apply_url") or job_data.get("url")
     if not target_url:
         return {"success": False, "message": "No application URL available for this job."}
+
+    logs = []
+    def notify(step_name: str, detail: str = ""):
+        if progress_callback:
+            try:
+                progress_callback(step_name, detail)
+            except Exception:
+                pass
+        logs.append(f"{step_name}: {detail}" if detail else step_name)
+
+    company_name = job_data.get('company', 'Employer')
+    notify("✍️ Step 1/5: Tailoring Application Materials", f"Generating custom cover letter for {company_name}...")
 
     # 1. Tailor Cover Letter
     tailored_letter = copilot.generate_cover_letter(
@@ -1381,6 +1441,7 @@ def auto_apply_to_job(
     db.set_setting("user_phone", candidate_phone)
 
     # 2. Dynamically tailor resume for this specific job & company
+    notify("📄 Step 2/5: Synthesizing ATS Resume", "Crafting executive 1-page PDF aligned with required skills...")
     tailored_resume = generate_tailored_resume_files(resume_data, job_data, api_key=api_key)
     resume_file_path = tailored_resume.get("pdf") or tailored_resume.get("docx")
 
@@ -1399,7 +1460,7 @@ def auto_apply_to_job(
     is_cloud = os.environ.get("STREAMLIT_SHARING_MODE") is not None or (os.name != "nt" and os.environ.get("DISPLAY") is None)
     headless_mode = bool(is_cloud)
 
-    logs = []
+    notify("🍪 Step 3/5: Browser Profile", "Loading persistent session cache & cookies...")
     logs.append(f"🎯 Target: {job_data['title']} at {job_data['company']}")
     logs.append(f"✍️ Tailored cover letter generated ({len(tailored_letter)} chars)")
     
@@ -1454,13 +1515,24 @@ def auto_apply_to_job(
             page = context.pages[0] if context.pages else context.new_page()
 
             try:
-                page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
-                time.sleep(2.5)
+                notify("🌐 Step 4/5: Launching Browser Context", f"Navigating to {company_name} application page...")
+                page.goto(target_url, timeout=25000, wait_until="domcontentloaded")
+                time.sleep(2.0)
+
+                # Check if portal is an aggregator with an external employer apply link
+                outbound = resolve_outbound_aggregator_url(page, logs)
+                if outbound:
+                    notify("🔗 Outbound Employer Portal", f"Following direct link to employer ATS: {outbound[:60]}...")
+                    try:
+                        page.goto(outbound, timeout=25000, wait_until="domcontentloaded")
+                        time.sleep(2.0)
+                    except Exception:
+                        pass
 
                 # 🛡️ CAPTCHA Check 1: Initial landing check & handover if challenge present
                 c_stat = detect_captcha(page)
                 if c_stat["has_captcha"]:
-                    handle_captcha_handover(page, logs, timeout_seconds=90)
+                    handle_captcha_handover(page, logs, timeout_seconds=35, progress_callback=notify)
 
                 # Check login wall
                 curr_url = page.url.lower()
@@ -1503,12 +1575,12 @@ def auto_apply_to_job(
                             # Check login wall
                             l_stat = detect_login_wall(page)
                             if l_stat["needs_login"]:
-                                handle_login_handover(page, l_stat["platform"], logs, timeout_seconds=120)
+                                handle_login_handover(page, l_stat["platform"], logs, timeout_seconds=40, progress_callback=notify)
 
                             # 🛡️ CAPTCHA Check 2: Check if opening application triggered a challenge
                             c_stat = detect_captcha(page)
                             if c_stat["has_captcha"]:
-                                handle_captcha_handover(page, logs, timeout_seconds=90)
+                                handle_captcha_handover(page, logs, timeout_seconds=35, progress_callback=notify)
                             break
                     except Exception:
                         continue
@@ -1551,10 +1623,12 @@ def auto_apply_to_job(
                     # 🛡️ CAPTCHA Check 3: Check at beginning of wizard step
                     c_stat = detect_captcha(page)
                     if c_stat["has_captcha"]:
-                        handle_captcha_handover(page, logs, timeout_seconds=90)
+                        handle_captcha_handover(page, logs, timeout_seconds=35, progress_callback=notify)
 
                     # 1. Fill all visible inputs, selects, radios, checkboxes on current step
+                    notify(f"📝 Step 5/5: Form Auto-Filler (Page {step_num})", "Detecting and populating application inputs...")
                     stats = fill_all_step_fields(page, resume_data, answers, tailored_letter, resume_file_path, logs, tailored_resume)
+                    notify(f"📝 Form Fields Populated (Page {step_num})", f"Filled {stats['inputs']} text fields, {stats['radios']} radios, {stats['selects']} dropdowns")
                     logs.append(f"Step {step_num}: Populated form fields (Inputs: {stats['inputs']}, Radios: {stats['radios']}, Dropdowns: {stats['selects']}, Checkboxes: {stats['checkboxes']}, Files: {stats['files']})")
                     time.sleep(1.2)
 
@@ -1684,6 +1758,7 @@ def auto_apply_to_job(
 
                 # If Co-Pilot Assist mode, wait for user to review and submit manually
                 if not auto_submit:
+                    notify("👀 Browser Opened for Review", "Form pre-filled! Please review and submit in Chrome.")
                     logs.append("👀 Screen popped up for you! Form is pre-filled. Please review and click Submit when ready.")
                     page.bring_to_front()
                     start_wait = time.time()
@@ -1696,8 +1771,32 @@ def auto_apply_to_job(
                         except Exception:
                             break
 
+                # Ensure DB record is never left hanging as 'In Progress'
+                if not is_submitted:
+                    db.save_or_update_application(
+                        job_id=job_data["id"],
+                        job_title=job_data["title"],
+                        company=job_data["company"],
+                        apply_url=target_url,
+                        status="Needs Review",
+                        cover_letter=tailored_letter
+                    )
+                    notify("📋 Status Updated", "Application recorded as 'Needs Review' in tracker.")
+
             except Exception as e:
                 logs.append(f"Notice during application: {str(e)[:160]}")
+                if not is_submitted:
+                    try:
+                        db.save_or_update_application(
+                            job_id=job_data["id"],
+                            job_title=job_data["title"],
+                            company=job_data["company"],
+                            apply_url=target_url,
+                            status="Needs Review",
+                            cover_letter=tailored_letter
+                        )
+                    except Exception:
+                        pass
             finally:
                 try:
                     context.close()
@@ -1706,6 +1805,20 @@ def auto_apply_to_job(
 
     except Exception as e:
         logs.append(f"Notice: {str(e)[:120]}")
+        if not is_submitted:
+            try:
+                db.save_or_update_application(
+                    job_id=job_data["id"],
+                    job_title=job_data["title"],
+                    company=job_data["company"],
+                    apply_url=target_url,
+                    status="Needs Review",
+                    cover_letter=tailored_letter
+                )
+            except Exception:
+                pass
+
+    notify("🏁 Application Cycle Finished", "Submitted" if is_submitted else "Review Needed")
 
     return {
         "success": True,
