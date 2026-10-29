@@ -999,6 +999,108 @@ else:
     import streamlit.components.v1 as components
     components.html(clean_ui_script, height=0, width=0)
 
+# ================= AUTO-APPLY MODAL DIALOG & POPUP =================
+@st.dialog("🚀 Autonomous Application Runner", width="large")
+def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = "", auto_submit: bool = True):
+    company = job_data.get("company", "Company")
+    title = job_data.get("title", "Role")
+    loc = job_data.get("location", "Remote")
+    src = job_data.get("source", "Web")
+    sal = job_data.get("salary", "Salary Not Disclosed")
+
+    st.markdown(f"### {title} @ **{company}**")
+    st.markdown(f"📍 {loc} &nbsp;|&nbsp; 🏷️ **{src}** &nbsp;|&nbsp; 💰 {sal}")
+    st.divider()
+
+    mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_submit else "Co-Pilot Assist (Pre-Fill & Review)"
+    with st.status(f"🤖 Running {mode_label}...", expanded=True) as status:
+        st.write("1. ✍️ Tailoring 1-page ATS resume & cover letter specifically for this role...")
+        st.write("2. 🍪 Loading persistent browser profile & session cookies (saved logins active)...")
+        st.write("3. 🖥️ Launching browser context on your screen...")
+        st.write("4. 📝 Auto-filling contact info, experience & answering screening questions...")
+        if auto_submit:
+            st.write("5. 🚀 Executing 'Submit Application' and verifying platform confirmation receipt...")
+        else:
+            st.write("5. 👀 Form pre-filled! Browser opened for your manual review.")
+
+        result = auto_applicant.auto_apply_to_job(
+            job_data=job_data,
+            resume_data=resume_data,
+            api_key=api_key,
+            auto_submit=auto_submit,
+            keep_open_seconds=90
+        )
+
+        if result.get("submitted"):
+            status.update(label="🎉 Application Verified & Submitted!", state="complete", expanded=False)
+        else:
+            status.update(label="⚠️ Application Needs Review (Confirmation Not Detected)", state="complete", expanded=False)
+
+    cand_email = resume_data.get("email") or db.get_setting("user_email", "mrityunjayk456@gmail.com")
+
+    if result.get("submitted"):
+        st.balloons()
+        st.toast(f"🎉 Application Submitted! Confirmation email on its way to {cand_email}", icon="🎉")
+        st.markdown(f"""
+        <div style="background: rgba(16, 185, 129, 0.12); border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin: 15px 0;">
+            <div style="font-size: 2.2rem; margin-bottom: 4px;">🎉</div>
+            <div style="font-size: 1.3rem; font-weight: 800; color: #10B981;">Application Submitted & Verified!</div>
+            <div style="font-size: 0.9rem; color: #F1F5F9; margin-top: 6px;">
+                The platform has accepted your submission. The company portal will send an automated revert / confirmation receipt to:
+            </div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #38BDF8; margin-top: 4px;">
+                📧 <code>{cand_email}</code>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if result.get("screenshot") and os.path.exists(result["screenshot"]):
+            st.image(result["screenshot"], caption="📸 Submission Confirmation Proof Captured from Portal", use_container_width=True)
+
+        col_done1, col_done2 = st.columns(2)
+        with col_done1:
+            if st.button("✅ Awesome! Close & Refresh", type="primary", use_container_width=True, key=f"btn_modal_done_{job_data.get('id')}"):
+                st.rerun()
+        with col_done2:
+            apply_link = job_data.get("apply_url") or job_data.get("url")
+            if apply_link:
+                st.link_button("🌐 Open Job Portal", apply_link, use_container_width=True)
+
+    else:
+        st.toast("⚠️ Action Required: Application needs review on portal", icon="⚠️")
+        st.markdown(f"""
+        <div style="background: rgba(245, 158, 11, 0.12); border: 2px solid #F59E0B; border-radius: 12px; padding: 20px; text-align: center; margin: 15px 0;">
+            <div style="font-size: 2.2rem; margin-bottom: 4px;">⚠️</div>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #F59E0B;">Action Required: Portal Needs Manual Review</div>
+            <div style="font-size: 0.88rem; color: #F1F5F9; margin-top: 6px; line-height: 1.5;">
+                The bot navigated to the portal and pre-filled your details, but the final platform confirmation receipt was not detected.
+                <br><strong>Your browser window has been brought to the front.</strong> Please review any remaining step (login, phone OTP, or company-specific questionnaire) and click Submit.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_rev1, col_rev2 = st.columns(2)
+        with col_rev1:
+            if st.button("✅ I Submitted it Manually! Mark as Applied", type="primary", use_container_width=True, key=f"btn_modal_manual_submit_{job_data.get('id')}"):
+                db.save_or_update_application(
+                    job_id=job_data["id"],
+                    job_title=job_data["title"],
+                    company=job_data["company"],
+                    apply_url=job_data.get("apply_url") or job_data.get("url", ""),
+                    status="Applied",
+                    applied_date=datetime.now().strftime("%Y-%m-%d %H:%M")
+                )
+                st.balloons()
+                st.success("Marked as Applied in Tracker!")
+                st.rerun()
+        with col_rev2:
+            if st.button("Close Dialog (Keep as Needs Review)", use_container_width=True, key=f"btn_modal_close_{job_data.get('id')}"):
+                st.rerun()
+
+    with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=False):
+        for l in result.get("logs", []):
+            st.write(f"- {l}")
+
 # ================= PAGE 1: RESUME PROFILE =================
 if page == "📄 Resume Profile":
     st.markdown('<div class="main-header">📄 Resume Hub & Profile</div>', unsafe_allow_html=True)
@@ -1433,10 +1535,8 @@ elif page == "🔍 Job Discovery":
                 btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1.3, 1.1, 0.8, 1])
                 with btn_col1:
                     if st.button(f"🚀 Auto-Apply", key=f"auto_{job['id']}", type="primary", use_container_width=True, help="Autonomous engine: auto-fills all steps and submits this application!"):
-                        st.session_state.selected_job = job
-                        st.session_state.nav_redirect = "🎯 Match & Co-Pilot"
-                        st.session_state.trigger_auto_apply = True
-                        st.rerun()
+                        gemini_key = get_gemini_api_key()
+                        render_auto_apply_modal(job, active_resume, gemini_key, auto_submit=True)
                 with btn_col2:
                     if st.button(f"🎯 Co-Pilot", key=f"copilot_{job['id']}", use_container_width=True, help="Review match breakdown and tailor cover letters"):
                         st.session_state.selected_job = job
@@ -1631,15 +1731,7 @@ elif page == "⏰ Auto-Hunter":
                                 "apply_url": q.get("apply_url") or q.get("url", ""),
                                 "description": f"{q.get('job_title')} at {q.get('company')}"
                             }
-                            with st.status(f"🤖 Autonomous applying to {q.get('company')}...", expanded=True) as apply_stat:
-                                res = auto_applicant.auto_apply_to_job(job_obj, active_resume, api_key=gemini_key, auto_submit=True, keep_open_seconds=60)
-                                if res.get("submitted"):
-                                    apply_stat.update(label="🎉 Application Verified & Submitted!", state="complete")
-                                    db.update_hunter_queue_status(q_id, "Applied")
-                                    st.balloons()
-                                    st.rerun()
-                                else:
-                                    apply_stat.update(label="⚠️ Application needs manual review on portal", state="complete")
+                            render_auto_apply_modal(job_obj, active_resume, gemini_key, auto_submit=True)
                     
                     with btn2:
                         if st.button("🎯 Tailor Resume & Materials", key=f"btn_tailor_{q_id}", use_container_width=True):
@@ -1924,41 +2016,7 @@ elif page == "🎯 Match & Co-Pilot":
 
         if auto_pilot_clicked:
             gemini_key = get_gemini_api_key()
-            mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_mode else "Co-Pilot Assist (Pre-Fill & Review)"
-            with st.status(f"🤖 Running {mode_label}...", expanded=True) as status:
-                st.write("1. ✍️ Tailoring cover letter specifically for this job...")
-                st.write("2. 🍪 Loading persistent browser profile & cache memory (saved logins active)...")
-                st.write("3. 🖥️ Launching browser context...")
-                st.write("4. 📝 Auto-filling multi-step form, answering screening questions & attaching resume...")
-                if auto_mode:
-                    st.write("5. 🚀 Executing 'Submit Application' and verifying submission confirmation...")
-                else:
-                    st.write("5. 👀 Form pre-filled! Browser opened for your manual review.")
-
-                result = auto_applicant.auto_apply_to_job(
-                    job_data=target_job,
-                    resume_data=active_resume,
-                    api_key=gemini_key,
-                    auto_submit=auto_mode,
-                    keep_open_seconds=90
-                )
-                if result.get("submitted"):
-                    status.update(label="🎉 Application Verified & Submitted!", state="complete", expanded=False)
-                else:
-                    status.update(label="⚠️ Application Needs Review (Confirmation Not Detected)", state="complete", expanded=False)
-            
-            with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=True):
-                for l in result.get("logs", []):
-                    st.write(f"- {l}")
-
-            cand_email = active_resume.get("email") or "mrityunjayk456@gmail.com"
-            if result.get("submitted"):
-                st.balloons()
-                st.success(f"🎉 Application Submitted & Confirmed! The platform will send an automated revert/confirmation email to **{cand_email}**.")
-                if result.get("screenshot") and os.path.exists(result["screenshot"]):
-                    st.image(result["screenshot"], caption="📸 Submission Confirmation Proof", use_container_width=True)
-            else:
-                st.warning(f"⚠️ Application form was opened, but final platform confirmation receipt was not detected. Status is marked as **Needs Review** in your Application Tracker to prevent false applications. Revert emails are only sent by platforms once submission is confirmed.")
+            render_auto_apply_modal(target_job, active_resume, gemini_key, auto_submit=auto_mode)
         
         # Deep Match Analysis
         st.subheader("📊 Match Diagnostic & Skill Gap Analysis")
