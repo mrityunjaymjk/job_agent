@@ -1008,7 +1008,9 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
     src = job_data.get("source", "Web")
     sal = job_data.get("salary", "Salary Not Disclosed")
     apply_link = job_data.get("apply_url") or job_data.get("url", "")
+    cand_email = resume_data.get("email") or db.get_setting("user_email", "mrityunjayk456@gmail.com")
 
+    # Header Card
     header_col1, header_col2 = st.columns([2.5, 1.2])
     with header_col1:
         st.markdown(f"### {title} @ **{company}**")
@@ -1019,11 +1021,36 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
 
     st.divider()
 
-    mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_submit else "Co-Pilot Assist (Pre-Fill & Review)"
-    status = st.status(f"🤖 Initializing {mode_label}...", expanded=True)
+    # Prominent Live Status Banner (Placed at TOP so user always sees the exact status)
+    status_banner_placeholder = st.empty()
+    progress_bar_placeholder = st.empty()
 
-    # Dynamic live progress callback that updates st.status in real-time
+    # Initial state
+    status_banner_placeholder.info(f"⏳ **RUNNING AUTO-APPLY FOR {company.upper()}** — Bot is generating custom materials and launching browser...")
+    progress_bar_placeholder.progress(10, text="1/5: Starting engine...")
+
+    mode_label = "Autonomous Auto-Apply (Auto-Submit Enabled)" if auto_submit else "Co-Pilot Assist (Pre-Fill & Review)"
+    status = st.status(f"🤖 Step 1/5: Tailoring Materials for {company}...", expanded=True)
+
+    # Dynamic live progress callback that updates BOTH top banner, progress bar, and status label in real-time
     def on_progress(step_name: str, detail: str = ""):
+        pct = 15
+        if "1/5" in step_name or "Materials" in step_name:
+            pct = 20
+        elif "2/5" in step_name or "Resume" in step_name:
+            pct = 40
+        elif "3/5" in step_name or "Profile" in step_name:
+            pct = 55
+        elif "4/5" in step_name or "Browser" in step_name:
+            pct = 70
+        elif "5/5" in step_name or "Form" in step_name:
+            pct = 85
+        elif "Finished" in step_name or "Status Updated" in step_name:
+            pct = 100
+
+        progress_bar_placeholder.progress(pct, text=f"{step_name}: {detail[:40] if detail else ''}")
+        status.update(label=f"🤖 {step_name}...", state="running")
+
         with status:
             if detail:
                 st.write(f"➡️ **{step_name}**: `{detail}`")
@@ -1040,13 +1067,7 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
             keep_open_seconds=45,
             progress_callback=on_progress
         )
-
-        if result.get("submitted"):
-            status.update(label="🎉 Application Verified & Submitted!", state="complete", expanded=False)
-        else:
-            status.update(label="⚠️ Application Needs Review (Confirmation Not Detected)", state="complete", expanded=False)
     except Exception as e:
-        status.update(label=f"⚠️ Portal Notice: {str(e)[:60]}", state="error", expanded=True)
         result = {
             "success": False,
             "submitted": False,
@@ -1054,19 +1075,24 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
             "tailored_letter": ""
         }
 
-    cand_email = resume_data.get("email") or db.get_setting("user_email", "mrityunjayk456@gmail.com")
+    # FINISHED STATE: Clear progress bar, collapse detailed logs, update banner to DONE
+    progress_bar_placeholder.empty()
 
     if result.get("submitted"):
+        status.update(label="✅ Detailed Steps Completed (Click to view execution log)", state="complete", expanded=False)
         st.balloons()
         st.toast(f"🎉 Application Submitted! Confirmation email on its way to {cand_email}", icon="🎉")
-        st.markdown(f"""
-        <div style="background: rgba(16, 185, 129, 0.12); border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin: 15px 0;">
-            <div style="font-size: 2.2rem; margin-bottom: 4px;">🎉</div>
-            <div style="font-size: 1.3rem; font-weight: 800; color: #10B981;">Application Submitted & Verified!</div>
-            <div style="font-size: 0.9rem; color: #F1F5F9; margin-top: 6px;">
-                The platform has accepted your submission. The company portal will send an automated revert / confirmation receipt to:
+
+        status_banner_placeholder.markdown(f"""
+        <div style="background: rgba(16, 185, 129, 0.18); border: 2px solid #10B981; border-radius: 12px; padding: 18px; text-align: center; margin-bottom: 15px;">
+            <div style="font-size: 2.2rem; margin-bottom: 2px;">🎉</div>
+            <div style="font-size: 1.35rem; font-weight: 800; color: #10B981; text-transform: uppercase;">
+                Application Submitted & Confirmed!
             </div>
-            <div style="font-size: 0.95rem; font-weight: 700; color: #38BDF8; margin-top: 4px;">
+            <div style="font-size: 0.95rem; color: #F1F5F9; margin-top: 6px;">
+                Platform accepted your submission! Company revert & confirmation receipt will be sent to:
+            </div>
+            <div style="font-size: 1rem; font-weight: 700; color: #38BDF8; margin-top: 4px;">
                 📧 <code>{cand_email}</code>
             </div>
         </div>
@@ -1084,21 +1110,31 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
                 st.link_button("🌐 Open Job Portal", apply_link, use_container_width=True)
 
     else:
-        st.toast("⚠️ Action Required: Application needs review on portal", icon="⚠️")
-        st.markdown(f"""
-        <div style="background: rgba(245, 158, 11, 0.12); border: 2px solid #F59E0B; border-radius: 12px; padding: 20px; text-align: center; margin: 15px 0;">
-            <div style="font-size: 2.2rem; margin-bottom: 4px;">⚠️</div>
-            <div style="font-size: 1.25rem; font-weight: 800; color: #F59E0B;">Action Required: Portal Needs Manual Review</div>
-            <div style="font-size: 0.88rem; color: #F1F5F9; margin-top: 6px; line-height: 1.5;">
-                The bot navigated to the portal and pre-filled your details, but the final platform confirmation receipt was not detected.
-                <br><strong>Your browser window has been brought to the front.</strong> Please review any remaining step (login, phone OTP, or company-specific questionnaire) and click Submit.
+        status.update(label="⚠️ Detailed Steps (Click to view execution log)", state="complete", expanded=False)
+        st.toast("⚠️ Process Complete: Manual review required on portal", icon="⚠️")
+
+        status_banner_placeholder.markdown(f"""
+        <div style="background: rgba(245, 158, 11, 0.18); border: 2px solid #F59E0B; border-radius: 12px; padding: 18px; text-align: center; margin-bottom: 15px;">
+            <div style="font-size: 2.2rem; margin-bottom: 2px;">⚠️</div>
+            <div style="font-size: 1.35rem; font-weight: 800; color: #F59E0B; text-transform: uppercase;">
+                Done: Action Required On Portal
+            </div>
+            <div style="font-size: 0.92rem; color: #F1F5F9; margin-top: 6px; line-height: 1.5;">
+                The bot navigated to the company portal and pre-filled your details, but the final platform confirmation receipt was not detected.
+                <br><strong>Please open the portal to review and complete the final submit click.</strong>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
+        # Prominent Action Buttons placed directly below the banner
         col_rev1, col_rev2 = st.columns(2)
         with col_rev1:
-            if st.button("✅ I Submitted it Manually! Mark as Applied", type="primary", use_container_width=True, key=f"btn_modal_manual_submit_{job_data.get('id')}"):
+            if apply_link:
+                st.link_button("🌐 Open Job Portal to Submit", apply_link, type="primary", use_container_width=True)
+            else:
+                st.info("Portal URL unavailable")
+        with col_rev2:
+            if st.button("✅ I Submitted it! Mark as Applied", type="secondary", use_container_width=True, key=f"btn_modal_manual_submit_{job_data.get('id')}"):
                 db.save_or_update_application(
                     job_id=job_data["id"],
                     job_title=job_data["title"],
@@ -1110,9 +1146,11 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
                 st.balloons()
                 st.success("Marked as Applied in Tracker!")
                 st.rerun()
-        with col_rev2:
-            if st.button("Close Dialog (Keep as Needs Review)", use_container_width=True, key=f"btn_modal_close_{job_data.get('id')}"):
-                st.rerun()
+
+        st.caption("After completing the application on the company's website, click **'I Submitted it! Mark as Applied'** to update your tracker.")
+
+        if st.button("Close Dialog (Keep as Needs Review)", use_container_width=True, key=f"btn_modal_close_{job_data.get('id')}"):
+            st.rerun()
 
     with st.expander("📋 View Auto-Apply Session Activity Logs", expanded=False):
         for l in result.get("logs", []):

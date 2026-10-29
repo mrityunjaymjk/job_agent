@@ -1702,7 +1702,7 @@ def auto_apply_to_job(
                                 # 🛡️ CAPTCHA Check 5: Check if advancing wizard triggered a challenge
                                 c_stat = detect_captcha(page)
                                 if c_stat["has_captcha"]:
-                                    handle_captcha_handover(page, logs, timeout_seconds=90)
+                                    handle_captcha_handover(page, logs, timeout_seconds=35, progress_callback=notify)
                                 time.sleep(0.5)
                                 break
                         except Exception:
@@ -1722,7 +1722,7 @@ def auto_apply_to_job(
                                         
                                         c_stat = detect_captcha(page)
                                         if c_stat["has_captcha"]:
-                                            handle_captcha_handover(page, logs, timeout_seconds=90)
+                                            handle_captcha_handover(page, logs, timeout_seconds=35, progress_callback=notify)
                                             
                                         is_submitted = detect_submission_success(page, target_url, logs)
                                         proof_screenshot = take_confirmation_screenshot(page, job_data.get("id", "job"), logs)
