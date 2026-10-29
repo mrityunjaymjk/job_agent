@@ -31,6 +31,8 @@ import copilot
 importlib.reload(copilot)
 import auto_applicant
 importlib.reload(auto_applicant)
+import auto_hunter
+importlib.reload(auto_hunter)
 
 st.set_page_config(
     page_title="AI Job Application Co-Pilot",
@@ -38,6 +40,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Start background Auto-Hunter scheduler daemon if enabled
+auto_hunter.ensure_hunter_daemon_running()
 
 # PWA & iOS Safari Mobile Support (iPhone 13-18, Android & Modern WebKit)
 st.markdown("""
@@ -715,8 +720,8 @@ if "selected_job" not in st.session_state:
     st.session_state.selected_job = None
 if "cached_jobs" not in st.session_state:
     st.session_state.cached_jobs = db.get_all_jobs()
-NAV_OPTIONS = ["📄 Resume Profile", "🔍 Job Discovery", "🎯 Match & Co-Pilot", "📊 Application Tracker", "⚙️ Settings"]
-NAV_ICONS = ["📄", "🔍", "🎯", "📊", "⚙️"]
+NAV_OPTIONS = ["📄 Resume Profile", "🔍 Job Discovery", "⏰ Auto-Hunter", "🎯 Match & Co-Pilot", "📊 Application Tracker", "⚙️ Settings"]
+NAV_ICONS = ["📄", "🔍", "⏰", "🎯", "📊", "⚙️"]
 
 if "current_page" not in st.session_state or st.session_state.current_page not in NAV_OPTIONS:
     st.session_state.current_page = "📄 Resume Profile"
@@ -767,7 +772,7 @@ with st.sidebar:
     </div>
     <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #64748B; margin: 12px 0 8px 4px; display: flex; align-items: center; justify-content: space-between;">
         <span>Workspace</span>
-        <span style="background: rgba(255, 255, 255, 0.06); padding: 1px 7px; border-radius: 4px; font-size: 0.65rem; color: #94A3B8;">5 Modules</span>
+        <span style="background: rgba(255, 255, 255, 0.06); padding: 1px 7px; border-radius: 4px; font-size: 0.65rem; color: #94A3B8;">6 Modules</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1241,6 +1246,26 @@ elif page == "🔍 Job Discovery":
     all_jobs = db.get_all_jobs()
     st.session_state.cached_jobs = all_jobs
 
+    # Morning Auto-Hunter Digest Quick Banner
+    h_quick_stats = db.get_hunter_stats()
+    if h_quick_stats.get("queued_count", 0) > 0:
+        with st.container(border=True):
+            col_bn1, col_bn2 = st.columns([3.2, 1.2])
+            with col_bn1:
+                st.markdown(f'''
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="font-size: 1.8rem;">🌅</div>
+                    <div>
+                        <div style="font-size: 0.95rem; font-weight: 700; color: #38BDF8;">Morning Auto-Hunter Digest: {h_quick_stats['queued_count']} High-Match Positions Ready!</div>
+                        <div style="font-size: 0.8rem; color: #94A3B8;">Top candidate positions matching up to <strong>{h_quick_stats['top_score']}% ATS score</strong> scouted across Naukri, LinkedIn, Indeed & Wellfound.</div>
+                    </div>
+                </div>
+                ''', unsafe_allow_html=True)
+            with col_bn2:
+                if st.button("⏰ Open Morning Digest ➔", key="btn_goto_hunter_from_discovery", type="primary", use_container_width=True):
+                    st.session_state.current_page = "⏰ Auto-Hunter"
+                    st.rerun()
+
     if not all_jobs:
         st.info("No jobs stored yet. Expand 'Fetch New Live Jobs' above and click Download!")
     else:
@@ -1433,6 +1458,286 @@ elif page == "🔍 Job Discovery":
                     apply_link = job.get('apply_url') or job.get('url')
                     if apply_link:
                         st.link_button("🔗 Job Link", apply_link, use_container_width=True)
+
+# ================= PAGE: AUTO-HUNTER & MORNING DIGEST =================
+elif page == "⏰ Auto-Hunter":
+    st.markdown('<div class="main-header">⏰ Daily Auto-Hunter & Morning Digest</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Hands-free scout that monitors Naukri, Indeed, LinkedIn, and Wellfound, pre-scores ATS compatibility (>80%), and queues positions for 1-click batch application.</div>', unsafe_allow_html=True)
+    
+    active_resume = db.get_active_resume()
+    gemini_key = get_gemini_api_key()
+    
+    hunter_settings = auto_hunter.get_hunter_settings()
+    hunter_stats = db.get_hunter_stats()
+    daemon_status = auto_hunter.get_daemon_status()
+    
+    # Top Metrics Bar
+    with st.container(border=True):
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("🎯 High-Match Queue", f"{hunter_stats['queued_count']} Jobs", help="Positions discovered matching >= threshold ATS compatibility score")
+        m2.metric("🚀 Auto-Applied", f"{hunter_stats['applied_count']} Jobs", help="Positions applied via autonomous batch engine")
+        m3.metric("🌟 Top ATS Match", f"{hunter_stats['top_score']:.1f}%" if hunter_stats['top_score'] > 0 else "N/A", help="Highest ATS keyword alignment score in current queue")
+        
+        status_text = "🟢 Active" if daemon_status["scheduler_enabled"] else "⚪ Manual"
+        sched_sub = f"Daily at {daemon_status['scheduled_time']}" if daemon_status["scheduler_enabled"] else "Trigger On-Demand"
+        m4.metric("🤖 Background Scout", status_text, sched_sub)
+
+    # Action Toolbar
+    act_col1, act_col2, act_col3, act_col4 = st.columns([1.5, 1.8, 1.3, 1.0])
+    
+    with act_col1:
+        run_now_clicked = st.button("⚡ Run Auto-Hunter Now", type="primary", use_container_width=True, help="Immediately crawls Naukri, Indeed, LinkedIn, and Wellfound for fresh matching jobs!")
+    with act_col2:
+        batch_apply_clicked = st.button("🚀 1-Click Auto-Apply (Top 3)", type="secondary", use_container_width=True, help="Autonomous engine applies to the top 3 high-match positions in queue using your tailored 1-page resume!")
+    with act_col3:
+        save_all_clicked = st.button("📥 Save All to Tracker", use_container_width=True, help="Imports all current high-matching queue items into Application Tracker under 'Saved'")
+    with act_col4:
+        clear_queue_clicked = st.button("🧹 Clear Queue", use_container_width=True, help="Removes all queued positions from Morning Digest")
+
+    if run_now_clicked:
+        with st.status("🔍 Auto-Hunter scouting platforms for fresh positions...", expanded=True) as status_box:
+            st.write(f"1. 👤 Loading candidate profile and skills for **{active_resume.get('name', 'Candidate') if active_resume else 'Candidate'}**...")
+            st.write(f"2. 🌐 Querying {len(hunter_settings['sources'])} job boards for '{hunter_settings['keywords']}' in '{hunter_settings['location']}'...")
+            
+            def _live_log(msg):
+                st.write(f"• {msg}")
+
+            hunt_res = auto_hunter.run_auto_hunt(
+                search_query=hunter_settings["keywords"],
+                location=hunter_settings["location"],
+                sources=hunter_settings["sources"],
+                work_mode=hunter_settings["work_mode"],
+                min_match_score=hunter_settings["min_score"],
+                progress_callback=_live_log
+            )
+            
+            if hunt_res.get("success"):
+                status_box.update(label=f"🎉 Auto-Hunt Complete: {hunt_res['new_found']} new jobs added, {hunt_res['high_matches']} high matches queued!", state="complete", expanded=False)
+                st.balloons()
+                st.rerun()
+            else:
+                status_box.update(label=f"⚠️ {hunt_res.get('error', 'Auto-hunt failed')}", state="error")
+
+    if batch_apply_clicked:
+        queued_items = db.get_hunter_queue(status="Queued")
+        if not queued_items:
+            st.warning("No jobs currently in queue! Click '⚡ Run Auto-Hunter Now' to discover high-matching positions first.")
+        elif not active_resume:
+            st.warning("Please upload a resume in the 'Resume Profile' tab first!")
+        else:
+            with st.status("🤖 Running Autonomous Batch Auto-Apply for Top Matches...", expanded=True) as batch_status:
+                st.write(f"🚀 Initializing Playwright browser context & persistent cookie sessions...")
+                
+                def _batch_prog(curr, tot, msg):
+                    st.write(f"[{curr}/{tot}] {msg}")
+                    
+                batch_res = auto_hunter.batch_auto_apply_queue(limit=3, api_key=gemini_key, progress_callback=_batch_prog)
+                submitted_cnt = sum(1 for r in batch_res if r.get("submitted"))
+                batch_status.update(label=f"✅ Batch application completed! {submitted_cnt}/{len(batch_res)} submitted successfully.", state="complete", expanded=False)
+                st.balloons()
+                st.rerun()
+
+    if save_all_clicked:
+        saved_c = auto_hunter.save_queue_jobs_to_tracker()
+        st.success(f"📥 Saved {saved_c} positions into your Application Tracker under 'Saved'!")
+        st.rerun()
+
+    if clear_queue_clicked:
+        db.clear_hunter_queue()
+        st.toast("Auto-Hunter queue cleared.")
+        st.rerun()
+
+    # Main Tabs
+    h_tab1, h_tab2, h_tab3 = st.tabs([
+        f"🌅 Morning Digest Queue ({hunter_stats['queued_count']})",
+        "⚙️ Hunter Config & Scheduling",
+        "📜 Hunt Activity & Logs"
+    ])
+
+    with h_tab1:
+        queued_jobs = db.get_hunter_queue(status="Queued")
+        
+        if not queued_jobs:
+            st.markdown("""
+            <div style="background: rgba(30, 41, 59, 0.5); border: 2px dashed rgba(148, 163, 184, 0.2); border-radius: 16px; padding: 40px 20px; text-align: center; margin: 20px 0;">
+                <div style="font-size: 3rem; margin-bottom: 10px;">🌅</div>
+                <div style="font-size: 1.2rem; font-weight: 700; color: #F8FAFC;">Morning Digest Queue is Empty</div>
+                <div style="font-size: 0.88rem; color: #94A3B8; max-width: 500px; margin: 8px auto 20px; line-height: 1.5;">
+                    The Auto-Hunter hasn't found new positions matching your criteria yet. Click below to trigger a live crawl across Naukri, LinkedIn, Indeed, and Wellfound right now!
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("⚡ Scan & Populate Morning Digest Now", type="primary", key="btn_scan_empty_digest"):
+                with st.spinner("Scouting platforms for top matching jobs..."):
+                    auto_hunter.run_auto_hunt(
+                        search_query=hunter_settings["keywords"],
+                        location=hunter_settings["location"],
+                        sources=hunter_settings["sources"],
+                        min_match_score=hunter_settings["min_score"]
+                    )
+                    st.rerun()
+        else:
+            c_filter1, c_filter2 = st.columns([2, 1])
+            with c_filter1:
+                st.caption(f"Showing **{len(queued_jobs)}** verified high-match positions sorted by ATS compatibility score.")
+            with c_filter2:
+                q_sort = st.selectbox("Sort By", ["Highest Match Score", "Most Recent"], key="hunter_q_sort")
+            
+            if q_sort == "Most Recent":
+                queued_jobs = sorted(queued_jobs, key=lambda x: x.get("discovered_at", ""), reverse=True)
+            else:
+                queued_jobs = sorted(queued_jobs, key=lambda x: x.get("match_score", 0.0), reverse=True)
+
+            for q_idx, q in enumerate(queued_jobs):
+                q_id = q.get("job_id")
+                score = q.get("match_score", 0.0)
+                score_color = "#16A34A" if score >= 85 else ("#2563EB" if score >= 75 else "#D97706")
+                score_bg = "rgba(22, 163, 74, 0.12)" if score >= 85 else ("rgba(37, 99, 235, 0.12)" if score >= 75 else "rgba(217, 119, 6, 0.12)")
+                
+                with st.container(border=True):
+                    row1_left, row1_right = st.columns([2.5, 1.5])
+                    with row1_left:
+                        st.markdown(f"### {q.get('job_title')} @ **{q.get('company')}**")
+                        st.markdown(f"📍 {q.get('location', 'Remote')} &nbsp;|&nbsp; 🏷️ **{q.get('source')}** &nbsp;|&nbsp; 🕒 Discovered: `{q.get('discovered_at', '')}`")
+                    
+                    with row1_right:
+                        st.markdown(f"""
+                        <div style="background: {score_bg}; border: 1px solid {score_color}; border-radius: 10px; padding: 8px 14px; text-align: center;">
+                            <div style="font-size: 0.72rem; font-weight: 700; color: #94A3B8; text-transform: uppercase;">ATS Match Score</div>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: {score_color}; line-height: 1.1;">{score:.1f}%</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Skills breakdown
+                    m_skills = q.get("matched_skills", [])
+                    miss_skills = q.get("missing_skills", [])
+                    if m_skills:
+                        st.markdown("**✅ Matched ATS Skills:** " + " ".join([f'<span class="skill-chip">{s}</span>' for s in m_skills[:8]]), unsafe_allow_html=True)
+                    if miss_skills:
+                        st.caption("⚠️ Missing / Gap Skills: " + ", ".join(miss_skills[:5]))
+
+                    st.divider()
+
+                    # Action Buttons
+                    btn1, btn2, btn3, btn4 = st.columns([1.5, 1.5, 1.5, 0.8])
+                    with btn1:
+                        if st.button("🚀 1-Click Auto-Apply", key=f"btn_apply_{q_id}", type="primary", use_container_width=True):
+                            job_obj = db.get_job_by_id(q_id) or {
+                                "id": q_id,
+                                "title": q.get("job_title"),
+                                "company": q.get("company"),
+                                "location": q.get("location"),
+                                "source": q.get("source"),
+                                "apply_url": q.get("apply_url") or q.get("url", ""),
+                                "description": f"{q.get('job_title')} at {q.get('company')}"
+                            }
+                            with st.status(f"🤖 Autonomous applying to {q.get('company')}...", expanded=True) as apply_stat:
+                                res = auto_applicant.auto_apply_to_job(job_obj, active_resume, api_key=gemini_key, auto_submit=True, keep_open_seconds=60)
+                                if res.get("submitted"):
+                                    apply_stat.update(label="🎉 Application Verified & Submitted!", state="complete")
+                                    db.update_hunter_queue_status(q_id, "Applied")
+                                    st.balloons()
+                                    st.rerun()
+                                else:
+                                    apply_stat.update(label="⚠️ Application needs manual review on portal", state="complete")
+                    
+                    with btn2:
+                        if st.button("🎯 Tailor Resume & Materials", key=f"btn_tailor_{q_id}", use_container_width=True):
+                            job_obj = db.get_job_by_id(q_id) or {
+                                "id": q_id,
+                                "title": q.get("job_title"),
+                                "company": q.get("company"),
+                                "location": q.get("location"),
+                                "source": q.get("source"),
+                                "apply_url": q.get("apply_url") or q.get("url", ""),
+                                "description": f"{q.get('job_title')} at {q.get('company')}"
+                            }
+                            st.session_state.selected_job = job_obj
+                            st.session_state.nav_redirect = "🎯 Match & Co-Pilot"
+                            st.rerun()
+
+                    with btn3:
+                        apply_url_val = q.get("apply_url") or q.get("url")
+                        if apply_url_val:
+                            st.link_button("🌐 Open Job Portal", apply_url_val, use_container_width=True)
+                        else:
+                            st.button("Saved", disabled=True, use_container_width=True)
+                    
+                    with btn4:
+                        if st.button("❌", key=f"btn_dismiss_{q_id}", help="Dismiss from Morning Digest", use_container_width=True):
+                            db.dismiss_hunter_queue_item(q_id)
+                            st.toast(f"Dismissed {q.get('job_title')}")
+                            st.rerun()
+
+    with h_tab2:
+        st.markdown("#### ⚙️ Configure Auto-Hunter Routine & Criteria")
+        st.caption("Customize what positions the Morning Scout searches for and when it executes.")
+
+        with st.form("hunter_config_form"):
+            col_cfg1, col_cfg2 = st.columns(2)
+            with col_cfg1:
+                cfg_enabled = st.toggle("🤖 Enable Daily Automatic Morning Scouting", value=hunter_settings.get("enabled", False), help="When ON, the background daemon automatically checks job boards every morning at your specified time.")
+                cfg_time = st.text_input("Daily Morning Scout Time (24h format HH:MM)", value=hunter_settings.get("schedule_time", "09:00"), help="e.g. 09:00 for 9 AM, 08:30 for 8:30 AM")
+                cfg_query = st.text_input("Target Role / Tech Stack Keywords", value=hunter_settings.get("keywords", ""), help="e.g. Java Developer, Spring Boot, Microservices, Python, React...")
+                cfg_loc = st.text_input("Target Location", value=hunter_settings.get("location", "Pune, India"), help="City, State, Country, or 'Remote'")
+            
+            with col_cfg2:
+                work_mode_opts = ["All", "Remote", "Hybrid", "On-Site"]
+                cur_wm = hunter_settings.get("work_mode", "All")
+                wm_idx = work_mode_opts.index(cur_wm) if cur_wm in work_mode_opts else 0
+                cfg_work_mode = st.selectbox("Work Mode Filter", work_mode_opts, index=wm_idx)
+                cfg_min_score = st.slider("Minimum ATS Compatibility Score (%)", min_value=60, max_value=95, value=int(hunter_settings.get("min_score", 80)), step=5, help="Only jobs matching at or above this score are queued into your Morning Digest.")
+                cfg_auto_apply = st.toggle("🚀 Auto-Apply Top Matches Automatically", value=hunter_settings.get("auto_apply", False), help="When enabled, the scout automatically submits applications to the top 3 high matches each morning without waiting for manual confirmation!")
+
+            st.markdown("##### Platforms to Search:")
+            ALL_HUNTER_SOURCES = ["Naukri", "Indeed", "LinkedIn", "Wellfound", "Jobicy", "RemoteOK", "Remotive", "Arbeitnow"]
+            cfg_sources = st.multiselect(
+                "Select Search Platforms",
+                options=ALL_HUNTER_SOURCES,
+                default=[s for s in hunter_settings.get("sources", auto_hunter.DEFAULT_SOURCES) if s in ALL_HUNTER_SOURCES],
+                label_visibility="collapsed"
+            )
+
+            save_cfg_btn = st.form_submit_button("💾 Save Auto-Hunter Settings", type="primary", use_container_width=True)
+            if save_cfg_btn:
+                auto_hunter.save_hunter_settings({
+                    "enabled": cfg_enabled,
+                    "schedule_time": cfg_time.strip() or "09:00",
+                    "keywords": cfg_query.strip(),
+                    "location": cfg_loc.strip(),
+                    "work_mode": cfg_work_mode,
+                    "min_score": float(cfg_min_score),
+                    "sources": cfg_sources if cfg_sources else ALL_HUNTER_SOURCES,
+                    "auto_apply": cfg_auto_apply
+                })
+                auto_hunter.ensure_hunter_daemon_running()
+                st.success("✅ Auto-Hunter settings saved and background daemon updated!")
+                st.rerun()
+
+    with h_tab3:
+        st.markdown("#### 📜 Auto-Hunter Execution History")
+        st.caption("Logs of recent background and manual hunting runs.")
+        
+        runs = db.get_hunter_runs(limit=15)
+        if not runs:
+            st.info("No hunter runs recorded yet. Click '⚡ Run Auto-Hunter Now' above to perform your first hunt!")
+        else:
+            df_runs = pd.DataFrame(runs)
+            cols_needed = ["run_time", "query", "location", "total_scanned", "new_found", "high_matches_found", "status"]
+            for col in cols_needed:
+                if col not in df_runs.columns:
+                    df_runs[col] = ""
+            df_display = df_runs[cols_needed].copy()
+            df_display.columns = ["Timestamp", "Keywords", "Location", "Scanned", "New Added", "High Matches", "Status"]
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            with st.expander("🔍 View Detailed Notes for Recent Runs"):
+                for r in runs[:5]:
+                    st.markdown(f"**Run #{r['id']} ({r['run_time']})** — `{r.get('sources', '')}`")
+                    st.write(f"• Query: `{r['query']}` | Location: `{r['location']}`")
+                    st.write(f"• Summary: {r.get('summary_notes', 'Completed')}")
+                    st.divider()
+
 
 # ================= PAGE 3: MATCH & CO-PILOT =================
 elif page == "🎯 Match & Co-Pilot":

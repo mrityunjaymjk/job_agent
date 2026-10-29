@@ -70,6 +70,41 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auto_hunter_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        query TEXT,
+        location TEXT,
+        sources TEXT,
+        total_scanned INTEGER DEFAULT 0,
+        new_found INTEGER DEFAULT 0,
+        high_matches_found INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'Completed',
+        summary_notes TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auto_hunter_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER,
+        job_id TEXT UNIQUE,
+        job_title TEXT,
+        company TEXT,
+        location TEXT,
+        source TEXT,
+        url TEXT,
+        apply_url TEXT,
+        match_score REAL DEFAULT 0.0,
+        matched_skills TEXT,
+        missing_skills TEXT,
+        status TEXT DEFAULT 'Queued', -- 'Queued', 'Applied', 'Dismissed'
+        discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        applied_at TIMESTAMP
+    )
+    """)
+
     conn.commit()
     
     # Safe migration: add location column to resumes if missing
@@ -447,6 +482,152 @@ def get_candidate_links(resume_data: Optional[Dict[str, Any]] = None) -> Dict[st
         "github": gh,
         "linkedin": li,
         "portfolio": pf
+    }
+
+# ================= AUTO-HUNTER OPERATIONS =================
+
+def record_hunter_run(
+    query: str,
+    location: str,
+    sources: List[str],
+    total_scanned: int,
+    new_found: int,
+    high_matches_found: int,
+    status: str = 'Completed',
+    summary_notes: str = ''
+) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    sources_str = ", ".join(sources) if isinstance(sources, list) else str(sources)
+    cursor.execute("""
+        INSERT INTO auto_hunter_runs (query, location, sources, total_scanned, new_found, high_matches_found, status, summary_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (query, location, sources_str, total_scanned, new_found, high_matches_found, status, summary_notes))
+    run_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+def get_hunter_runs(limit: int = 10) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM auto_hunter_runs ORDER BY id DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_to_hunter_queue(
+    job: Dict[str, Any],
+    match_score: float,
+    matched_skills: List[str],
+    missing_skills: List[str],
+    run_id: Optional[int] = None
+) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    m_skills_json = json.dumps(matched_skills or [])
+    miss_skills_json = json.dumps(missing_skills or [])
+    
+    job_id = str(job.get("id", ""))
+    job_title = str(job.get("title", "Role"))
+    company = str(job.get("company", "Company"))
+    location = str(job.get("location", "Remote / On-site"))
+    source = str(job.get("source", "Web"))
+    url = str(job.get("url", ""))
+    apply_url = str(job.get("apply_url") or job.get("url", ""))
+
+    cursor.execute("""
+        INSERT INTO auto_hunter_queue (
+            run_id, job_id, job_title, company, location, source, url, apply_url,
+            match_score, matched_skills, missing_skills, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Queued')
+        ON CONFLICT(job_id) DO UPDATE SET
+            run_id = excluded.run_id,
+            match_score = excluded.match_score,
+            matched_skills = excluded.matched_skills,
+            missing_skills = excluded.missing_skills
+    """, (run_id, job_id, job_title, company, location, source, url, apply_url, match_score, m_skills_json, miss_skills_json))
+    
+    conn.commit()
+    conn.close()
+    return True
+
+def get_hunter_queue(status: Optional[str] = 'Queued', min_score: float = 0.0) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute("""
+            SELECT * FROM auto_hunter_queue 
+            WHERE status = ? AND match_score >= ? 
+            ORDER BY match_score DESC, discovered_at DESC
+        """, (status, min_score))
+    else:
+        cursor.execute("""
+            SELECT * FROM auto_hunter_queue 
+            WHERE match_score >= ? 
+            ORDER BY match_score DESC, discovered_at DESC
+        """, (min_score,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    results = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["matched_skills"] = json.loads(d["matched_skills"]) if d.get("matched_skills") else []
+        except Exception:
+            d["matched_skills"] = []
+        try:
+            d["missing_skills"] = json.loads(d["missing_skills"]) if d.get("missing_skills") else []
+        except Exception:
+            d["missing_skills"] = []
+        results.append(d)
+    return results
+
+def update_hunter_queue_status(job_id: str, status: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if status == 'Applied':
+        cursor.execute("UPDATE auto_hunter_queue SET status = ?, applied_at = CURRENT_TIMESTAMP WHERE job_id = ?", (status, job_id))
+    else:
+        cursor.execute("UPDATE auto_hunter_queue SET status = ? WHERE job_id = ?", (status, job_id))
+    conn.commit()
+    conn.close()
+
+def dismiss_hunter_queue_item(job_id: str):
+    update_hunter_queue_status(job_id, 'Dismissed')
+
+def clear_hunter_queue(status: Optional[str] = None):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute("DELETE FROM auto_hunter_queue WHERE status = ?", (status,))
+    else:
+        cursor.execute("DELETE FROM auto_hunter_queue")
+    conn.commit()
+    conn.close()
+
+def get_hunter_stats() -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM auto_hunter_queue WHERE status = 'Queued'")
+    queued_cnt = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM auto_hunter_queue WHERE status = 'Applied'")
+    applied_cnt = cursor.fetchone()[0]
+    cursor.execute("SELECT MAX(match_score) FROM auto_hunter_queue WHERE status = 'Queued'")
+    top_score_row = cursor.fetchone()
+    top_score = top_score_row[0] if top_score_row and top_score_row[0] is not None else 0.0
+    cursor.execute("SELECT * FROM auto_hunter_runs ORDER BY id DESC LIMIT 1")
+    last_run_row = cursor.fetchone()
+    last_run = dict(last_run_row) if last_run_row else None
+    conn.close()
+    return {
+        "queued_count": queued_cnt,
+        "applied_count": applied_cnt,
+        "top_score": top_score,
+        "last_run": last_run
     }
 
 # Initialize DB on load
