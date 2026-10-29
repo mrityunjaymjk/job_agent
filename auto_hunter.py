@@ -377,6 +377,8 @@ class AutoHunterDaemon(threading.Thread):
             # Sleep 30 seconds between checks
             self._stop_event.wait(30)
 
+_DAEMON_INSTANCE: Optional[AutoHunterDaemon] = None
+
 def ensure_hunter_daemon_running():
     """Starts the background hunter daemon if enabled in settings and not already running."""
     global _DAEMON_INSTANCE
