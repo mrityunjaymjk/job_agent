@@ -1479,33 +1479,50 @@ def auto_apply_to_job(
     is_submitted = False
     proof_screenshot = None
 
+    import threading
+    playwright_mgr = None
+    p = None
+    context = None
+    driver_proc = None
+
     try:
-        with sync_playwright() as p:
-            launch_args = [
-                "--start-maximized" if not headless_mode else "--headless",
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage"
-            ]
-            try:
-                context = p.chromium.launch_persistent_context(
-                    user_data_dir=str(p_dir),
-                    channel="chrome" if os.name == "nt" else None,
-                    headless=headless_mode,
-                    no_viewport=not headless_mode,
-                    args=launch_args,
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    locale="en-US"
-                )
-            except Exception:
-                context = p.chromium.launch_persistent_context(
-                    user_data_dir=str(p_dir),
-                    headless=headless_mode,
-                    no_viewport=not headless_mode,
-                    args=launch_args,
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    locale="en-US"
-                )
+        playwright_mgr = sync_playwright()
+        p = playwright_mgr.start()
+        try:
+            driver_proc = getattr(getattr(playwright_mgr, '_connection', None), '_transport', None)
+            driver_proc = getattr(driver_proc, '_proc', None)
+        except Exception:
+            driver_proc = None
+
+        launch_args = [
+            "--start-maximized" if not headless_mode else "--headless",
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--disable-breakpad",
+            "--disable-hang-monitor",
+            "--no-first-run"
+        ]
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(p_dir),
+                channel="chrome" if os.name == "nt" else None,
+                headless=headless_mode,
+                no_viewport=not headless_mode,
+                args=launch_args,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="en-US"
+            )
+        except Exception:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(p_dir),
+                headless=headless_mode,
+                no_viewport=not headless_mode,
+                args=launch_args,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="en-US"
+            )
 
             context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', {
@@ -1798,10 +1815,16 @@ def auto_apply_to_job(
                     except Exception:
                         pass
             finally:
-                try:
-                    context.close()
-                except Exception:
-                    pass
+                # Safely close open pages without hanging on beforeunload
+                if context:
+                    try:
+                        for pg in list(context.pages):
+                            try:
+                                pg.close(run_before_unload=False)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
 
     except Exception as e:
         logs.append(f"Notice: {str(e)[:120]}")
@@ -1815,6 +1838,29 @@ def auto_apply_to_job(
                     status="Needs Review",
                     cover_letter=tailored_letter
                 )
+            except Exception:
+                pass
+    finally:
+        # Guaranteed non-blocking cleanup with 2.5s hard timeout
+        def _terminate_playwright():
+            try:
+                if context:
+                    context.close()
+            except Exception:
+                pass
+            try:
+                if p:
+                    p.stop()
+            except Exception:
+                pass
+
+        cleanup_th = threading.Thread(target=_terminate_playwright, daemon=True)
+        cleanup_th.start()
+        cleanup_th.join(timeout=2.5)
+        # If thread didn't exit within 2.5 seconds, terminate lingering driver process
+        if cleanup_th.is_alive() and driver_proc:
+            try:
+                driver_proc.kill()
             except Exception:
                 pass
 

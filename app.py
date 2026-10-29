@@ -1049,7 +1049,17 @@ def render_auto_apply_modal(job_data: dict, resume_data: dict, api_key: str = ""
             pct = 100
 
         progress_bar_placeholder.progress(pct, text=f"{step_name}: {detail[:40] if detail else ''}")
-        status.update(label=f"🤖 {step_name}...", state="running")
+        if "Finished" in step_name or "Status Updated" in step_name:
+            status.update(label=f"✅ {step_name}", state="complete", expanded=False)
+            status_banner_placeholder.markdown(f"""
+            <div style="background: rgba(245, 158, 11, 0.18); border: 2px solid #F59E0B; border-radius: 12px; padding: 14px; text-align: center; margin-bottom: 12px;">
+                <div style="font-size: 1.15rem; font-weight: 800; color: #F59E0B; text-transform: uppercase;">
+                    ⚡ Finalizing Application Details...
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            status.update(label=f"🤖 {step_name}...", state="running")
 
         with status:
             if detail:
