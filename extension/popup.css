@@ -290,3 +290,69 @@ textarea {
 .btn-success:hover {
   background: var(--accent-success-hover);
 }
+
+/* Resume Tab Styling */
+.resume-file-card {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px dashed rgba(99, 102, 241, 0.45);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resume-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+}
+
+.resume-details {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.resume-file-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c7d2fe;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resume-file-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.resume-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-micro {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-micro:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.file-input {
+  font-size: 11px;
+  padding: 4px;
+}

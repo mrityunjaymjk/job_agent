@@ -1,6 +1,6 @@
 /**
  * Job Agent AI - Content Script Form Filler
- * Autonomously inspects and autofills job applications across ATS portals.
+ * Autonomously inspects and autofills job applications across ATS portals (Greenhouse, Lever, Workday, LinkedIn, Indeed, etc.)
  */
 
 (() => {
@@ -14,6 +14,22 @@
         resolve(res.jobAgentProfile || null);
       });
     });
+  }
+
+  // Convert Base64 data to Blob
+  function base64ToBlob(base64, mimeType) {
+    try {
+      const byteCharacters = atob(base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: mimeType });
+    } catch (e) {
+      console.warn("[JobAgent] Failed to convert base64 to blob:", e);
+      return null;
+    }
   }
 
   // React/Angular/Vue compatible value setter
@@ -50,6 +66,35 @@
       } catch (err) {
         return false;
       }
+    }
+  }
+
+  // Attach resume file directly to <input type="file"> via DataTransfer API
+  function attachResumeFile(fileInput, profile) {
+    if (!profile.resume_base64) return false;
+    try {
+      const mime = profile.resume_mime || "application/pdf";
+      const filename = profile.resume_filename || "Resume.pdf";
+      const blob = base64ToBlob(profile.resume_base64, mime);
+      if (!blob) return false;
+
+      const file = new File([blob], filename, { type: mime, lastModified: Date.now() });
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      fileInput.files = dataTransfer.files;
+
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+      fileInput.classList.add("jobagent-highlight");
+
+      // Highlight parent upload dropzone if available
+      const parentDrop = fileInput.closest(".dropzone, .file-upload, [class*='upload'], [class*='drop'], label");
+      if (parentDrop) parentDrop.classList.add("jobagent-highlight");
+
+      return true;
+    } catch (e) {
+      console.warn("[JobAgent] Error attaching resume file:", e);
+      return false;
     }
   }
 
@@ -152,7 +197,7 @@
 
     setTimeout(() => {
       toast.classList.remove("show");
-    }, 4000);
+    }, 4500);
   }
 
   // Direct Gemini REST API caller for open-ended questions
@@ -217,8 +262,24 @@ Write a direct, professional, concise answer in first person ("I have...", "My b
     }
 
     let filledCount = 0;
+    let filesUploaded = 0;
 
-    // 1. Inputs & Textareas
+    // 0. Resume File Inputs (<input type="file">)
+    const fileInputs = document.querySelectorAll("input[type='file']");
+    for (const fi of fileInputs) {
+      const sig = getElementSignature(fi);
+      if (
+        sig.includes("resume") || sig.includes("cv") || sig.includes("curriculum") ||
+        sig.includes("attachment") || sig.includes("document") || fileInputs.length === 1
+      ) {
+        if (attachResumeFile(fi, profile)) {
+          filesUploaded++;
+          filledCount++;
+        }
+      }
+    }
+
+    // 1. Text Inputs & Textareas
     const textElements = document.querySelectorAll(
       "input:not([type='hidden']):not([type='radio']):not([type='checkbox']):not([type='file']):not([type='submit']):not([type='button']), textarea"
     );
@@ -289,6 +350,52 @@ Write a direct, professional, concise answer in first person ("I have...", "My b
       else if (sig.includes("desired salary") || sig.includes("expected salary") || sig.includes("compensation")) {
         const cleanSalary = profile.expected_salary.replace(/[^\d]/g, "") || "10000";
         if (setNativeValue(el, cleanSalary)) filledCount++;
+      }
+      // Plain text resume paste
+      else if (
+        sig.includes("paste resume") || sig.includes("resume text") ||
+        sig.includes("plain text resume") || sig.includes("copy and paste your resume") ||
+        sig.includes("resume content")
+      ) {
+        if (setNativeValue(el, profile.resume_raw_text || profile.experience)) filledCount++;
+      }
+      // Current Employer / Company
+      else if (
+        (sig.includes("current company") || sig.includes("most recent company") || sig.includes("current employer") || sig.includes("employer") || sig.includes("organization")) &&
+        !sig.includes("school")
+      ) {
+        if (setNativeValue(el, profile.current_company || "Digitalllydrunk Pvt Ltd")) filledCount++;
+      }
+      // Current Job Title
+      else if (
+        sig.includes("job title") || sig.includes("current title") || sig.includes("designation") ||
+        sig.includes("position title") || sig.includes("current role")
+      ) {
+        if (setNativeValue(el, profile.current_title || "Backend Developer")) filledCount++;
+      }
+      // Employment Start Date
+      else if (sig.includes("start date") || sig.includes("from date") || sig.includes("start month") || sig.includes("start year")) {
+        if (setNativeValue(el, profile.experience_start || "Nov 2025")) filledCount++;
+      }
+      // Employment End Date
+      else if (sig.includes("end date") || sig.includes("to date") || sig.includes("end month") || sig.includes("end year")) {
+        if (setNativeValue(el, profile.experience_end || "Present")) filledCount++;
+      }
+      // Degree / Qualification
+      else if (sig.includes("degree") || sig.includes("qualification") || sig.includes("highest education") || sig.includes("education level")) {
+        if (setNativeValue(el, profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)")) filledCount++;
+      }
+      // Major / Field of Study
+      else if (sig.includes("major") || sig.includes("field of study") || sig.includes("discipline")) {
+        if (setNativeValue(el, profile.major || "Advanced Computing / Computer Science")) filledCount++;
+      }
+      // College / School / University
+      else if (sig.includes("school") || sig.includes("university") || sig.includes("college") || sig.includes("institution")) {
+        if (setNativeValue(el, profile.school || "Sunbeam Institute of Information Technology")) filledCount++;
+      }
+      // Graduation Year
+      else if (sig.includes("grad year") || sig.includes("graduation year") || sig.includes("completion year") || sig.includes("year graduated")) {
+        if (setNativeValue(el, profile.grad_year || "2025")) filledCount++;
       }
       // Textarea / Open-Ended Question Answering with Gemini AI
       else if (isTextarea || el.clientHeight > 50) {
@@ -407,8 +514,9 @@ Write a direct, professional, concise answer in first person ("I have...", "My b
     if (pillText) pillText.textContent = "Autofill with AI";
     isAutofilling = false;
 
-    showToast(`Autofilled ${filledCount} field${filledCount === 1 ? "" : "s"} successfully!`, true);
-    return { success: true, count: filledCount };
+    const fileNotice = filesUploaded > 0 ? ` (+${filesUploaded} resume attached)` : "";
+    showToast(`Autofilled ${filledCount} field${filledCount === 1 ? "" : "s"}${fileNotice} successfully!`, true);
+    return { success: true, count: filledCount, filesUploaded: filesUploaded };
   }
 
   // Listen for messages from popup

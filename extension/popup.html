@@ -32,6 +32,7 @@
     <!-- Navigation Tabs -->
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-personal">👤 Personal</button>
+      <button class="tab-btn" data-tab="tab-resume">📄 Resume</button>
       <button class="tab-btn" data-tab="tab-work">💼 Preferences</button>
       <button class="tab-btn" data-tab="tab-ai">🤖 Gemini AI</button>
     </div>
@@ -92,7 +93,81 @@
       </div>
     </div>
 
-    <!-- Tab 2: Work & Preferences -->
+    <!-- Tab 2: Resume & ATS Experience -->
+    <div class="tab-content" id="tab-resume">
+      <!-- Resume File Card -->
+      <div class="resume-file-card">
+        <div class="resume-badge">
+          <span>📄</span>
+          <div class="resume-details">
+            <div id="resumeFileName" class="resume-file-title">No Resume File Loaded</div>
+            <div id="resumeFileMeta" class="resume-file-meta">Click below to attach or sync</div>
+          </div>
+        </div>
+        <div class="resume-btn-row">
+          <button id="downloadResumeBtn" class="btn-micro" title="Download resume file">📥 Download File</button>
+          <button id="copyResumeTextBtn" class="btn-micro" title="Copy plain text resume">📋 Copy Text</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Upload / Replace Resume (.pdf, .docx, .txt)</label>
+        <input type="file" id="resumeFileInput" accept=".pdf,.docx,.txt" class="file-input">
+      </div>
+
+      <div class="section-label">Experience (Workday / ATS Auto-Fill)</div>
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Current Employer</label>
+          <input type="text" id="currentCompany" placeholder="e.g. Company Ltd">
+        </div>
+        <div class="form-group half">
+          <label>Job Title</label>
+          <input type="text" id="currentTitle" placeholder="e.g. Backend Developer">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Start Date</label>
+          <input type="text" id="expStart" placeholder="e.g. Nov 2025">
+        </div>
+        <div class="form-group half">
+          <label>End Date</label>
+          <input type="text" id="expEnd" placeholder="e.g. Present">
+        </div>
+      </div>
+
+      <div class="section-label">Education (Workday / ATS Auto-Fill)</div>
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Degree / Qualification</label>
+          <input type="text" id="degree" placeholder="e.g. B.Tech / PG-DAC">
+        </div>
+        <div class="form-group half">
+          <label>Field of Study</label>
+          <input type="text" id="major" placeholder="e.g. Computer Science">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>College / University</label>
+          <input type="text" id="school" placeholder="e.g. Institute of IT">
+        </div>
+        <div class="form-group half">
+          <label>Graduation Year</label>
+          <input type="text" id="gradYear" placeholder="e.g. 2025">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Plain-Text Resume & Bio</label>
+        <textarea id="resumeRawText" rows="4" placeholder="Full resume plain text for text box applications..."></textarea>
+      </div>
+    </div>
+
+    <!-- Tab 3: Work & Preferences -->
     <div class="tab-content" id="tab-work">
       <div class="form-row">
         <div class="form-group half">
@@ -148,7 +223,7 @@
       </div>
     </div>
 
-    <!-- Tab 3: Gemini AI -->
+    <!-- Tab 4: Gemini AI -->
     <div class="tab-content" id="tab-ai">
       <div class="form-group">
         <label>Gemini API Key</label>

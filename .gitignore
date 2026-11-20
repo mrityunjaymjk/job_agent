@@ -28,6 +28,7 @@ job_agent.db
 *.bak
 active_resume.txt
 active_resume.docx
+active_resume.pdf
 screenshots/
 uploads/
 resumes/
