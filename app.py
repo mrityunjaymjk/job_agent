@@ -2806,6 +2806,43 @@ elif page == "⚙️ Settings":
                         st.error(sync_res.get("message"))
 
     with st.container(border=True):
+        st.subheader("🧩 Chrome Extension Companion (AI Form Filler)")
+        st.write("Turn your Job Agent into a 1-Click Form Filler directly inside your regular Google Chrome browser. No terminal commands, no Playwright setup, and zero bot detection!")
+        
+        ext_col1, ext_col2 = st.columns([2.5, 1.5])
+        with ext_col1:
+            st.markdown("""
+            **How to install in Google Chrome:**
+            1. Open Chrome and navigate to `chrome://extensions/`
+            2. Toggle **Developer mode** in the top-right corner to **ON**.
+            3. Click **"Load unpacked"** in the top-left toolbar.
+            4. Select the directory:  
+               `D:\\DEAR MJ\\job_agent\\extension`
+            5. Pin **Job Agent AI** to your Chrome toolbar. Open any job application and click **⚡ Autofill with AI**!
+            """)
+        with ext_col2:
+            st.write("")
+            st.write("")
+            if st.button("🔄 Sync Database to Extension", type="primary", width="stretch", help="Sync active resume, profile preferences, and Gemini API key to the Chrome Extension."):
+                from extension.sync_profile import sync_profile
+                synced_p = sync_profile()
+                st.success(f"✅ Successfully synced profile ({synced_p['name']}) to Chrome Extension!")
+                st.rerun()
+
+            with st.expander("👀 View Synced Extension Profile JSON"):
+                try:
+                    import json
+                    from pathlib import Path
+                    p_file = Path("extension/profile_data.json")
+                    if p_file.exists():
+                        with open(p_file, "r", encoding="utf-8") as pf:
+                            st.json(json.load(pf))
+                    else:
+                        st.info("Profile not exported yet. Click Sync above.")
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
+
+    with st.container(border=True):
         st.subheader("📱 Mobile Sync & App Experience")
         st.write("Use this Co-Pilot on any smartphone (**iPhone 13–18 / Pro / Max**, **Samsung Galaxy**, **Google Pixel**, Android, or iOS) with a tailored touch interface.")
         

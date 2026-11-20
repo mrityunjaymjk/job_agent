@@ -32,6 +32,7 @@ screenshots/
 uploads/
 resumes/
 tailored_resumes/
+extension/profile_data.json
 
 # Build output and unrelated binary artifacts
 build/

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Agent AI Form Filler</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1 class="title">Job Agent AI</h1>
+          <p class="subtitle">Autonomous Form Filler</p>
+        </div>
+      </div>
+      <div class="status-badge" id="aiStatusBadge">Gemini Ready</div>
+    </header>
+
+    <!-- Instant Action Box -->
+    <div class="action-card">
+      <button id="autofillCurrentTabBtn" class="btn-primary">
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">Autofill Application Now</span>
+      </button>
+      <div id="pageFeedback" class="feedback-text">Ready to autofill on active tab</div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-personal">👤 Personal</button>
+      <button class="tab-btn" data-tab="tab-work">💼 Preferences</button>
+      <button class="tab-btn" data-tab="tab-ai">🤖 Gemini AI</button>
+    </div>
+
+    <!-- Tab 1: Personal & Links -->
+    <div class="tab-content active" id="tab-personal">
+      <div class="form-row">
+        <div class="form-group half">
+          <label>First Name</label>
+          <input type="text" id="firstName" placeholder="First Name">
+        </div>
+        <div class="form-group half">
+          <label>Last Name</label>
+          <input type="text" id="lastName" placeholder="Last Name">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="fullName" placeholder="Full Name">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="Email address">
+        </div>
+        <div class="form-group half">
+          <label>Phone</label>
+          <input type="text" id="phone" placeholder="Phone with country code">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>City / Location</label>
+          <input type="text" id="location" placeholder="e.g. Pune, India">
+        </div>
+        <div class="form-group half">
+          <label>Country</label>
+          <input type="text" id="country" placeholder="e.g. India">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>LinkedIn URL</label>
+        <input type="url" id="linkedin" placeholder="https://linkedin.com/in/...">
+      </div>
+
+      <div class="form-group">
+        <label>GitHub URL</label>
+        <input type="url" id="github" placeholder="https://github.com/...">
+      </div>
+
+      <div class="form-group">
+        <label>Portfolio / Website</label>
+        <input type="url" id="portfolio" placeholder="https://...">
+      </div>
+    </div>
+
+    <!-- Tab 2: Work & Preferences -->
+    <div class="tab-content" id="tab-work">
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Years of Experience</label>
+          <input type="text" id="yearsExp" placeholder="e.g. 1+ years">
+        </div>
+        <div class="form-group half">
+          <label>Expected Salary</label>
+          <input type="text" id="expectedSalary" placeholder="e.g. $10,000 / yr">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Notice Period</label>
+        <input type="text" id="noticePeriod" placeholder="e.g. Immediate (2 weeks)">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Authorized to Work?</label>
+          <select id="workAuth">
+            <option value="Yes">Yes (Authorized)</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="form-group half">
+          <label>Require Visa Sponsorship?</label>
+          <select id="sponsorship">
+            <option value="No">No (Does Not Require)</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-label">EEO & Diversity Defaults</div>
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Gender Preference</label>
+          <select id="eeoGender">
+            <option value="Prefer not to disclose">Decline to disclose</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+        </div>
+        <div class="form-group half">
+          <label>Disability Status</label>
+          <select id="eeoDisability">
+            <option value="No, I do not have a disability">No disability</option>
+            <option value="Prefer not to disclose">Decline to disclose</option>
+            <option value="Yes, I have a disability">Yes</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Gemini AI -->
+    <div class="tab-content" id="tab-ai">
+      <div class="form-group">
+        <label>Gemini API Key</label>
+        <input type="password" id="geminiApiKey" placeholder="AIzaSy... / AQ...">
+        <div class="input-hint">Used to answer custom form questions & cover letters.</div>
+      </div>
+
+      <div class="form-group">
+        <label>AI Model</label>
+        <select id="geminiModel">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash (Ultra Fast & Free)</option>
+          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
+        </select>
+      </div>
+
+      <div class="form-group checkbox-row">
+        <input type="checkbox" id="enableAiAnswers" checked>
+        <label for="enableAiAnswers">Auto-Answer Open-Ended Questions (Why Us, Cover Letter, Experience)</label>
+      </div>
+
+      <div class="form-group checkbox-row">
+        <input type="checkbox" id="showFloatingPill" checked>
+        <label for="showFloatingPill">Show Floating "⚡ Autofill" Pill on Job Applications</label>
+      </div>
+
+      <div class="form-group">
+        <label>Resume & Key Experience Context</label>
+        <textarea id="experienceContext" rows="3" placeholder="Key skills & experience summary for Gemini..."></textarea>
+      </div>
+    </div>
+
+    <!-- Footer Controls -->
+    <footer class="footer">
+      <button id="resetDefaultsBtn" class="btn-secondary" title="Reload details from Job Agent">
+        🔄 Reload Defaults
+      </button>
+      <button id="saveProfileBtn" class="btn-success">
+        💾 Save Profile
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
