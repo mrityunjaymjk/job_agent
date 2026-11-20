@@ -5,12 +5,31 @@
  */
 
 (() => {
+  // Global suppression of harmless extension context invalidation errors when extension is reloaded
+  window.addEventListener("error", (event) => {
+    if (event?.message && event.message.includes("Extension context invalidated")) {
+      event.preventDefault?.();
+      event.stopImmediatePropagation?.();
+    }
+  }, true);
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const msg = event?.reason?.message || String(event?.reason || "");
+    if (msg.includes("Extension context invalidated")) {
+      event.preventDefault?.();
+      event.stopImmediatePropagation?.();
+    }
+  }, true);
+
   let isAutofilling = false;
 
   // Safe check for valid Chrome extension context (avoids 'Extension context invalidated' error on reloaded extensions)
   function isContextValid() {
     try {
-      return typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
+      if (typeof chrome === "undefined" || !chrome) return false;
+      const runtime = chrome.runtime;
+      if (!runtime) return false;
+      return Boolean(runtime.id);
     } catch (e) {
       return false;
     }
@@ -19,15 +38,19 @@
   // Retrieve stored profile from chrome storage
   function getProfile() {
     return new Promise((resolve) => {
-      if (!isContextValid()) {
-        return resolve(null);
-      }
       try {
+        if (!isContextValid()) {
+          return resolve(null);
+        }
         chrome.storage.local.get(["jobAgentProfile"], (res) => {
-          if (!isContextValid() || chrome.runtime.lastError) {
-            return resolve(null);
+          try {
+            if (!isContextValid()) {
+              return resolve(null);
+            }
+            resolve(res?.jobAgentProfile || null);
+          } catch (e) {
+            resolve(null);
           }
-          resolve(res?.jobAgentProfile || null);
         });
       } catch (err) {
         resolve(null);
