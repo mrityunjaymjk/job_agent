@@ -370,12 +370,12 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
     }
 
     return {
-      title: jobDetails.title,
-      company: jobDetails.company,
-      headline,
-      summary,
-      prioritized_skills: prioritizedSkills,
-      tailored_bullets: tailoredBullets,
+      title: cleanText(jobDetails.title),
+      company: cleanText(jobDetails.company),
+      headline: cleanText(headline),
+      summary: cleanText(summary),
+      prioritized_skills: prioritizedSkills.map(cleanText),
+      tailored_bullets: tailoredBullets.map(cleanText),
       cover_letter: coverLetter
     };
   }
@@ -383,30 +383,72 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
   // ==========================================
   // 3. IN-BROWSER ATS PDF COMPILER (PURE JS)
   // ==========================================
-  function escapePdf(text) {
-    if (!text) return "";
-    return String(text)
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)")
-      .replace(/[\r\n]+/g, " ");
+  const HELVETICA_CHAR_WIDTHS = {
+    ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, '\'': 222,
+    '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
+    '0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556,
+    '8': 556, '9': 556, ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556,
+    '@': 1015, 'A': 667, 'B': 667, 'C': 722, 'D': 722, 'E': 667, 'F': 611, 'G': 778,
+    'H': 722, 'I': 278, 'J': 500, 'K': 667, 'L': 556, 'M': 833, 'N': 722, 'O': 778,
+    'P': 667, 'Q': 778, 'R': 722, 'S': 667, 'T': 611, 'U': 722, 'V': 667, 'W': 944,
+    'X': 667, 'Y': 667, 'Z': 611, '[': 278, '\\': 278, ']': 278, '^': 469, '_': 556,
+    'a': 556, 'b': 556, 'c': 500, 'd': 556, 'e': 556, 'f': 278, 'g': 556, 'h': 556,
+    'i': 222, 'j': 222, 'k': 500, 'l': 222, 'm': 833, 'n': 556, 'o': 556, 'p': 556,
+    'q': 556, 'r': 333, 's': 500, 't': 278, 'u': 556, 'v': 500, 'w': 722, 'x': 500,
+    'y': 500, 'z': 500, '{': 334, '|': 260, '}': 334, '~': 584
+  };
+
+  function getTextWidth(text, fontSize) {
+    if (!text) return 0;
+    let w = 0;
+    for (let i = 0; i < text.length; i++) {
+      w += HELVETICA_CHAR_WIDTHS[text[i]] || 550;
+    }
+    return (w * fontSize) / 1000;
   }
 
-  function wrapText(text, maxChars = 84) {
-    if (!text) return [];
-    const words = text.split(/\s+/);
+  function cleanText(text) {
+    if (!text) return "";
+    return String(text)
+      .replace(/[\u2013\u2014]/g, " - ")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, "")
+      .replace(/â€[¢â“]/g, " - ")
+      .replace(/â¢/g, "")
+      .replace(/â/g, " - ")
+      .replace(/\s+/g, " ")
+      .replace(/[^\x20-\x7E]/g, "")
+      .trim();
+  }
+
+  function escapePdf(text) {
+    if (!text) return "";
+    return cleanText(text)
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)");
+  }
+
+  function wrapText(text, maxPtWidth, fontSize) {
+    const cleaned = cleanText(text);
+    if (!cleaned) return [];
+    const words = cleaned.split(/\s+/);
     const lines = [];
     let currentLine = [];
-    let currentLen = 0;
+    let currentWidth = 0;
+    const spaceWidth = getTextWidth(" ", fontSize);
 
     for (const w of words) {
-      if (currentLen + w.length + 1 <= maxChars) {
+      const wordWidth = getTextWidth(w, fontSize);
+      const addedWidth = currentLine.length ? spaceWidth + wordWidth : wordWidth;
+      if (currentWidth + addedWidth <= maxPtWidth) {
         currentLine.push(w);
-        currentLen += w.length + 1;
+        currentWidth += addedWidth;
       } else {
         if (currentLine.length) lines.push(currentLine.join(" "));
         currentLine = [w];
-        currentLen = w.length;
+        currentWidth = wordWidth;
       }
     }
     if (currentLine.length) lines.push(currentLine.join(" "));
@@ -415,21 +457,44 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
 
   function buildTailoredPdfBlob(tailored, profile) {
     const leftMargin = 50;
+    const rightMargin = 562;
+    const contentWidth = rightMargin - leftMargin; // 512 pt
     let y = 745;
     const streamParts = [];
 
     function addText(text, font, size, posX, posY) {
       const clean = escapePdf(text);
-      streamParts.push(`BT /${font} ${size} Tf ${posX} ${posY} Td (${clean}) Tj ET`);
+      streamParts.push(`BT /${font} ${size} Tf ${posX.toFixed(1)} ${posY.toFixed(1)} Td (${clean}) Tj ET`);
     }
 
-    function addLine(x1, y1, x2, y2) {
-      streamParts.push(`${x1} ${y1} m ${x2} ${y2} l S`);
+    function addRightText(text, font, size, posY) {
+      const clean = cleanText(text);
+      const width = getTextWidth(clean, size);
+      const posX = rightMargin - width;
+      addText(clean, font, size, posX, posY);
+    }
+
+    function addLine(x1, y1, x2, y2, lineWidth = 0.5) {
+      streamParts.push(`q ${lineWidth} w 0.82 0.85 0.9 RG ${x1.toFixed(1)} ${y1.toFixed(1)} m ${x2.toFixed(1)} ${y2.toFixed(1)} l S Q`);
+    }
+
+    function addSectionHeader(title) {
+      y -= 13;
+      addText(title, "F2", 9.5, leftMargin, y);
+      y -= 3;
+      addLine(leftMargin, y, rightMargin, y, 0.6);
+      y -= 9;
+    }
+
+    function drawBullet(cx, cy, r = 1.35) {
+      const k = r * 0.55228475;
+      streamParts.push(`q 0.15 0.2 0.3 rg`);
+      streamParts.push(`${cx.toFixed(1)} ${(cy + r).toFixed(1)} m ${(cx + k).toFixed(1)} ${(cy + r).toFixed(1)} ${(cx + r).toFixed(1)} ${(cy + k).toFixed(1)} ${(cx + r).toFixed(1)} ${cy.toFixed(1)} c ${(cx + r).toFixed(1)} ${(cy - k).toFixed(1)} ${(cx + k).toFixed(1)} ${(cy - r).toFixed(1)} ${cx.toFixed(1)} ${(cy - r).toFixed(1)} c ${(cx - k).toFixed(1)} ${(cy - r).toFixed(1)} ${(cx - r).toFixed(1)} ${(cy - k).toFixed(1)} ${(cx - r).toFixed(1)} ${cy.toFixed(1)} c ${(cx - r).toFixed(1)} ${(cy + k).toFixed(1)} ${(cx - k).toFixed(1)} ${(cy + r).toFixed(1)} ${cx.toFixed(1)} ${(cy + r).toFixed(1)} c f Q`);
     }
 
     // 1. Header: Name & Contact Info
-    addText(profile.name || "Mrityunjay Kumar", "F2", 17, leftMargin, y);
-    y -= 16;
+    addText(profile.name || "Mrityunjay Kumar", "F2", 18, leftMargin, y);
+    y -= 15;
 
     const contactParts = [
       profile.location || profile.city || "Pune, India",
@@ -438,85 +503,98 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
       profile.linkedin ? profile.linkedin.replace(/^https?:\/\/(www\.)?/, "") : "linkedin.com/in/mrityunjayk456"
     ].filter(Boolean);
 
-    addText(contactParts.join(" | "), "F1", 8.5, leftMargin, y);
-    y -= 10;
-    addLine(leftMargin, y, 562, y);
-    y -= 16;
+    addText(contactParts.join("  |  "), "F1", 8.5, leftMargin, y);
+    y -= 8;
+    addLine(leftMargin, y, rightMargin, y, 0.75);
+    y -= 13;
 
     // 2. Targeted Headline
-    addText(tailored.headline || `${tailored.title} – ${tailored.company}`, "F2", 11, leftMargin, y);
-    y -= 16;
+    addText(tailored.headline || `${tailored.title} - ${tailored.company}`, "F2", 10.5, leftMargin, y);
+    y -= 4;
 
-    // 3. Professional Summary (Tailored)
-    addText("PROFESSIONAL SUMMARY", "F2", 9.5, leftMargin, y);
-    y -= 12;
-    const summaryLines = wrapText(tailored.summary, 88);
+    // 3. Professional Summary (Tailored to JD)
+    addSectionHeader("PROFESSIONAL SUMMARY");
+    const summaryLines = wrapText(tailored.summary, contentWidth, 8.5);
     for (const line of summaryLines) {
       addText(line, "F1", 8.5, leftMargin, y);
-      y -= 11;
+      y -= 11.5;
     }
-    y -= 6;
 
     // 4. Core Technical Skills (Prioritized to JD)
-    addText("TECHNICAL SKILLS & COMPETENCIES", "F2", 9.5, leftMargin, y);
-    y -= 12;
-    const topSkills = tailored.prioritized_skills.slice(0, 16).join(", ");
-    const skillLines = wrapText(topSkills, 88);
-    for (const line of skillLines) {
-      addText(line, "F1", 8.5, leftMargin, y);
-      y -= 11;
-    }
-    y -= 6;
+    addSectionHeader("TECHNICAL SKILLS & COMPETENCIES");
+    const allSkills = (tailored.prioritized_skills && tailored.prioritized_skills.length)
+      ? tailored.prioritized_skills
+      : (Array.isArray(profile.skills) ? profile.skills : ["Java", "Spring Boot", "REST APIs", "MySQL", "React", "Python", "SQL", "Git", "Docker"]);
+    
+    const skillLine1 = "Languages & Frameworks: " + allSkills.slice(0, 8).join(", ");
+    const skillLine2 = "Databases, Cloud & Tools: " + allSkills.slice(8, 16).join(", ");
+    const skillLinesToPrint = [
+      skillLine1,
+      allSkills.length > 8 ? skillLine2 : null
+    ].filter(Boolean);
 
-    // 5. Professional Experience (With Tailored Bullets)
-    addText("PROFESSIONAL EXPERIENCE", "F2", 9.5, leftMargin, y);
-    y -= 13;
+    for (const sl of skillLinesToPrint) {
+      const wrapped = wrapText(sl, contentWidth, 8.5);
+      for (const line of wrapped) {
+        addText(line, "F1", 8.5, leftMargin, y);
+        y -= 11.5;
+      }
+    }
+
+    // 5. Professional Experience (With Tailored Bullets & Hanging Indents)
+    addSectionHeader("PROFESSIONAL EXPERIENCE");
 
     // Current Role
     const company = profile.current_company || "Digitalllydrunk Pvt Ltd";
     const roleTitle = profile.current_title || "Backend Developer";
-    const dates = `${profile.experience_start || "Nov 2025"} – ${profile.experience_end || "Present"}`;
+    const dates = `${profile.experience_start || "Nov 2025"} - ${profile.experience_end || "Present"}`;
 
     addText(`${roleTitle} | ${company}`, "F2", 9, leftMargin, y);
-    addText(dates, "F1", 8.5, 460, y);
+    addRightText(dates, "F1", 8.5, y);
     y -= 12;
 
+    const bulletTextWidth = contentWidth - 14;
     for (const bullet of tailored.tailored_bullets) {
-      const bLines = wrapText(`• ${bullet}`, 86);
+      const bLines = wrapText(bullet, bulletTextWidth, 8.5);
+      drawBullet(leftMargin + 5, y + 2.8, 1.35);
       for (const line of bLines) {
-        addText(line, "F1", 8.5, leftMargin + 4, y);
-        y -= 11;
+        addText(line, "F1", 8.5, leftMargin + 14, y);
+        y -= 11.5;
       }
+      y -= 3;
     }
-    y -= 4;
+    y -= 3;
 
     // Secondary Role / Internship
     addText("Software Developer (Intern) | Tubhyam IT Solution", "F2", 9, leftMargin, y);
-    addText("Aug 2025 – Nov 2025", "F1", 8.5, 460, y);
+    addRightText("Aug 2025 - Nov 2025", "F1", 8.5, y);
     y -= 12;
+
     const internBullets = [
-      "• Developed Java Spring Boot REST APIs for payment workflows handling 1,000+ transactions monthly.",
-      "• Integrated Stripe Payment Gateway for secure payment classification and asynchronous webhooks."
+      "Developed Java Spring Boot REST APIs for payment workflows handling 1,000+ transactions monthly.",
+      "Integrated Stripe Payment Gateway for secure payment classification and asynchronous webhooks."
     ];
     for (const b of internBullets) {
-      const bLines = wrapText(b, 86);
+      const bLines = wrapText(b, bulletTextWidth, 8.5);
+      drawBullet(leftMargin + 5, y + 2.8, 1.35);
       for (const line of bLines) {
-        addText(line, "F1", 8.5, leftMargin + 4, y);
-        y -= 11;
+        addText(line, "F1", 8.5, leftMargin + 14, y);
+        y -= 11.5;
       }
+      y -= 3;
     }
-    y -= 6;
+    y -= 2;
 
     // 6. Education & Certifications
-    addText("EDUCATION & CERTIFICATIONS", "F2", 9.5, leftMargin, y);
-    y -= 12;
+    addSectionHeader("EDUCATION & CERTIFICATIONS");
     addText(profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)", "F2", 8.5, leftMargin, y);
-    addText("2025", "F1", 8.5, 520, y);
-    y -= 10;
+    addRightText("2025", "F1", 8.5, y);
+    y -= 11;
     addText(profile.school || "Sunbeam Institute of Information Technology", "F1", 8.5, leftMargin, y);
     y -= 12;
-    addText("B.Tech in Mechanical Engineering | MIT Academy of Engineering (2020)", "F1", 8.5, leftMargin, y);
-    y -= 11;
+    addText("B.Tech in Mechanical Engineering | MIT Academy of Engineering", "F1", 8.5, leftMargin, y);
+    addRightText("2020", "F1", 8.5, y);
+    y -= 12;
     addText("Certifications: HackerRank 3-Star MySQL | 3-Star Problem Solving (Java / JavaScript)", "F1", 8.5, leftMargin, y);
 
     // Compile into PDF 1.4 Binary
