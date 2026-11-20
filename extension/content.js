@@ -7,12 +7,31 @@
 (() => {
   let isAutofilling = false;
 
+  // Safe check for valid Chrome extension context (avoids 'Extension context invalidated' error on reloaded extensions)
+  function isContextValid() {
+    try {
+      return typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Retrieve stored profile from chrome storage
   function getProfile() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(["jobAgentProfile"], (res) => {
-        resolve(res.jobAgentProfile || null);
-      });
+      if (!isContextValid()) {
+        return resolve(null);
+      }
+      try {
+        chrome.storage.local.get(["jobAgentProfile"], (res) => {
+          if (!isContextValid() || chrome.runtime.lastError) {
+            return resolve(null);
+          }
+          resolve(res?.jobAgentProfile || null);
+        });
+      } catch (err) {
+        resolve(null);
+      }
     });
   }
 
@@ -35,24 +54,40 @@
   // Route Gemini API calls to Background Service Worker (Bypasses all page CORS and CSP restrictions)
   function callGeminiApi(prompt, profile) {
     return new Promise((resolve) => {
-      if (!profile.gemini_api_key || !profile.enable_ai_answers) {
+      if (!profile?.gemini_api_key || !profile?.enable_ai_answers) {
         return resolve(null);
       }
-      chrome.runtime.sendMessage(
-        {
-          action: "CALL_GEMINI",
-          apiKey: profile.gemini_api_key,
-          model: profile.gemini_model || "gemini-1.5-flash",
-          prompt: prompt
-        },
-        (resp) => {
-          if (chrome.runtime.lastError || !resp || !resp.success) {
-            console.warn("[JobAgent] Background Gemini call failed or timed out:", chrome.runtime.lastError?.message || resp?.error);
-            return resolve(null);
+      if (!isContextValid()) {
+        console.warn("[JobAgent] Extension context invalidated during Gemini API call.");
+        return resolve(null);
+      }
+      try {
+        chrome.runtime.sendMessage(
+          {
+            action: "CALL_GEMINI",
+            apiKey: profile.gemini_api_key,
+            model: profile.gemini_model || "gemini-1.5-flash",
+            prompt: prompt
+          },
+          (resp) => {
+            if (!isContextValid()) {
+              return resolve(null);
+            }
+            try {
+              if (chrome.runtime?.lastError || !resp || !resp.success) {
+                console.warn("[JobAgent] Background Gemini call failed or timed out:", chrome?.runtime?.lastError?.message || resp?.error);
+                return resolve(null);
+              }
+              resolve(resp.text);
+            } catch (err) {
+              resolve(null);
+            }
           }
-          resolve(resp.text);
-        }
-      );
+        );
+      } catch (err) {
+        console.warn("[JobAgent] Failed to send message to background:", err);
+        resolve(null);
+      }
     });
   }
 
@@ -584,6 +619,11 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
 
     pillBtn.addEventListener("click", async (e) => {
       if (e.target === closeBtn) return;
+      if (!isContextValid()) {
+        showToast("Extension updated! Please refresh (F5) this webpage once.", false);
+        container.remove();
+        return;
+      }
       await runAutofill();
     });
 
@@ -926,54 +966,77 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
   // ==========================================
   // 6. COMMUNICATION & PREVIEW MESSAGES
   // ==========================================
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "AUTOFILL_FORM") {
-      runAutofill(request.profile).then((res) => sendResponse(res));
-      return true;
-    }
+  if (isContextValid()) {
+    try {
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (!isContextValid()) return false;
 
-    if (request.action === "GET_ACTIVE_JD") {
-      try {
-        const jd = extractJobDetails();
-        sendResponse(jd);
-      } catch (err) {
-        sendResponse({ title: "Software Engineer", company: "Company" });
-      }
-      return false;
-    }
-
-    if (request.action === "GENERATE_TAILORED_PREVIEW") {
-      (async () => {
-        try {
-          const jd = extractJobDetails();
-          const profile = request.profile || (await getProfile());
-          const tailored = await tailorResumeForJob(jd, profile);
-          const blob = buildTailoredPdfBlob(tailored, profile);
-
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const cleanCompany = (jd.company || "Company").replace(/[^a-zA-Z0-9]/g, "_");
-            const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
-            sendResponse({
-              success: true,
-              jobTitle: jd.title,
-              company: jd.company,
-              filename: `${cleanName}_Resume_${cleanCompany}.pdf`,
-              dataUrl: reader.result
-            });
-          };
-          reader.readAsDataURL(blob);
-        } catch (err) {
-          console.error("[JobAgent] Preview generation error:", err);
-          sendResponse({ success: false, error: err.message });
+        if (request.action === "AUTOFILL_FORM") {
+          runAutofill(request.profile).then((res) => {
+            if (isContextValid()) {
+              try {
+                sendResponse(res);
+              } catch (e) {}
+            }
+          });
+          return true;
         }
-      })();
-      return true;
+
+        if (request.action === "GET_ACTIVE_JD") {
+          try {
+            const jd = extractJobDetails();
+            sendResponse(jd);
+          } catch (err) {
+            sendResponse({ title: "Software Engineer", company: "Company" });
+          }
+          return false;
+        }
+
+        if (request.action === "GENERATE_TAILORED_PREVIEW") {
+          (async () => {
+            try {
+              const jd = extractJobDetails();
+              const profile = request.profile || (await getProfile());
+              const tailored = await tailorResumeForJob(jd, profile);
+              const blob = buildTailoredPdfBlob(tailored, profile);
+
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const cleanCompany = (jd.company || "Company").replace(/[^a-zA-Z0-9]/g, "_");
+                const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+                if (isContextValid()) {
+                  try {
+                    sendResponse({
+                      success: true,
+                      jobTitle: jd.title,
+                      company: jd.company,
+                      filename: `${cleanName}_Resume_${cleanCompany}.pdf`,
+                      dataUrl: reader.result
+                    });
+                  } catch (e) {}
+                }
+              };
+              reader.readAsDataURL(blob);
+            } catch (err) {
+              console.error("[JobAgent] Preview generation error:", err);
+              if (isContextValid()) {
+                try {
+                  sendResponse({ success: false, error: err.message });
+                } catch (e) {}
+              }
+            }
+          })();
+          return true;
+        }
+      });
+    } catch (e) {
+      // Ignored if extension context is invalidated
     }
-  });
+  }
 
   // Initialization
   (async () => {
+    if (!isContextValid()) return;
     const profile = await getProfile();
     const showPill = profile?.show_floating_pill !== false;
 
