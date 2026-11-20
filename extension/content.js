@@ -793,6 +793,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
 
       for (const el of textElements) {
         const sig = getElementSignature(el);
+        const directSig = ((el.name || "") + " " + (el.id || "") + " " + (el.placeholder || "") + " " + (el.getAttribute("aria-label") || "")).toLowerCase();
         const isTextarea = el.tagName.toLowerCase() === "textarea";
 
         // First Name
@@ -824,12 +825,15 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell")) {
           if (setNativeValue(el, profile.phone)) filledCount++;
         }
-        // Technical Skills / Skill Sets
+        // Technical Skills / Skill Sets (e.g. "Skill Sets *", "Technical Skills", "Technologies")
         else if (
-          (sig.includes("skill") || sig.includes("technical skill") || sig.includes("technolog")) &&
-          !sig.includes("years")
+          directSig.includes("skill") ||
+          (isTextarea && sig.includes("skill")) ||
+          ((sig.includes("skill") || sig.includes("technical skill") || sig.includes("technolog")) && !sig.includes("years of experience"))
         ) {
-          const skillsVal = Array.isArray(profile.skills) ? profile.skills.join(", ") : (profile.skills || "Java, Spring Boot, MySQL, REST APIs, React");
+          const skillsVal = (tailoredData?.prioritized_skills && tailoredData.prioritized_skills.length)
+            ? tailoredData.prioritized_skills.join(", ")
+            : (Array.isArray(profile.skills) ? profile.skills.join(", ") : (profile.skills || "Java, Spring Boot, MySQL, REST APIs, React"));
           if (setNativeValue(el, skillsVal)) filledCount++;
         }
         // Current Profile / Short Description / Summary
