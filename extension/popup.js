@@ -21,6 +21,47 @@ document.addEventListener("DOMContentLoaded", async () => {
   const previewTailoredBtn = document.getElementById("previewTailoredBtn");
   const enableTailoredResumeEl = document.getElementById("enableTailoredResume");
 
+  // Custom JD elements
+  const customJdCard = document.getElementById("customJdCard");
+  const customJdInput = document.getElementById("customJdInput");
+  const clearCustomJdBtn = document.getElementById("clearCustomJdBtn");
+  const toggleCustomJdBtn = document.getElementById("toggleCustomJdBtn");
+
+  // Load any previously saved manual JD
+  chrome.storage.local.get(["customJdText"], (res) => {
+    if (res.customJdText && customJdInput) {
+      customJdInput.value = res.customJdText;
+      if (customJdCard && res.customJdText.trim()) {
+        customJdCard.style.display = "flex";
+      }
+    }
+  });
+
+  if (customJdInput) {
+    customJdInput.addEventListener("input", () => {
+      chrome.storage.local.set({ customJdText: customJdInput.value });
+    });
+  }
+
+  if (clearCustomJdBtn) {
+    clearCustomJdBtn.addEventListener("click", () => {
+      if (customJdInput) {
+        customJdInput.value = "";
+        chrome.storage.local.remove(["customJdText"]);
+      }
+    });
+  }
+
+  if (toggleCustomJdBtn) {
+    toggleCustomJdBtn.addEventListener("click", () => {
+      if (customJdCard) {
+        const isHidden = customJdCard.style.display === "none";
+        customJdCard.style.display = isHidden ? "flex" : "none";
+        if (isHidden && customJdInput) customJdInput.focus();
+      }
+    });
+  }
+
   let currentProfile = {};
 
   // Tab switching
@@ -72,6 +113,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!res || !res.title) {
         if (detectedJobTitleEl) detectedJobTitleEl.textContent = "General Application";
         if (detectedCompanyEl) detectedCompanyEl.textContent = "Ready to tailor on any career page";
+        if (customJdCard) customJdCard.style.display = "flex";
         return;
       }
       if (detectedJobTitleEl && res.title) {
@@ -80,10 +122,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (detectedCompanyEl) {
         if (!res.hasJd) {
           detectedCompanyEl.textContent = (res.company && res.company !== "Employer")
-            ? `${res.company} (No JD on page - Using Default Profile)`
-            : "Form Page (No JD on page - Using Default Profile)";
+            ? `${res.company} (No JD on page - Paste JD below or use default)`
+            : "Form Page (No JD on page - Paste JD below or use default)";
+          // Automatically display the custom JD card when no JD is detected on active tab!
+          if (customJdCard) customJdCard.style.display = "flex";
         } else {
           detectedCompanyEl.textContent = res.company || "Target Job Description";
+          // If active page already has a genuine JD, hide manual card unless user typed something in it
+          if (customJdCard && !customJdInput?.value.trim()) {
+            customJdCard.style.display = "none";
+          }
         }
       }
     });
@@ -308,9 +356,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     previewTailoredBtn.addEventListener("click", async () => {
       previewTailoredBtn.textContent = "⏳ Generating...";
       currentProfile = collectUI();
+      const manualJd = customJdInput ? customJdInput.value.trim() : "";
 
       sendMessageToActiveTab(
-        { action: "GENERATE_TAILORED_PREVIEW", profile: currentProfile },
+        { action: "GENERATE_TAILORED_PREVIEW", profile: currentProfile, manualJd: manualJd },
         (res) => {
           previewTailoredBtn.textContent = "👁️ Preview Tailored PDF";
           if (!res || !res.success || !res.dataUrl) {
@@ -382,9 +431,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     currentProfile = collectUI();
     chrome.storage.local.set({ jobAgentProfile: currentProfile });
+    const manualJd = customJdInput ? customJdInput.value.trim() : "";
 
     sendMessageToActiveTab(
-      { action: "AUTOFILL_FORM", profile: currentProfile },
+      { action: "AUTOFILL_FORM", profile: currentProfile, manualJd: manualJd },
       (response) => {
         if (!response || !response.success) {
           feedbackEl.textContent = response?.error || "Please refresh this webpage (F5) once and retry!";

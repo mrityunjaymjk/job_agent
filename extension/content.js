@@ -264,9 +264,10 @@
       const prevText = (el.previousElementSibling.innerText || el.previousElementSibling.textContent || "").trim();
       if (prevText.length < 100) parts.push(prevText);
     }
-    if (el.parentElement?.previousElementSibling) {
-      const prevParentText = (el.parentElement.previousElementSibling.innerText || el.parentElement.previousElementSibling.textContent || "").trim();
-      if (prevParentText.length < 100) parts.push(prevParentText);
+    // Only check parent sibling in table cells (e.g. <tr><td>Label</td><td><input></td></tr>)
+    if (el.parentElement?.tagName === "TD" && el.parentElement.previousElementSibling?.tagName === "TD") {
+      const prevCellText = (el.parentElement.previousElementSibling.innerText || el.parentElement.previousElementSibling.textContent || "").trim();
+      if (prevCellText.length < 100) parts.push(prevCellText);
     }
 
     // Check parent containers (up to 4 levels) for child label and concise text
@@ -985,7 +986,17 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         container.remove();
         return;
       }
-      await runAutofill();
+
+      const jobDetails = extractJobDetails();
+      const hasJd = hasGenuineJobDescription(jobDetails.description, jobDetails.title);
+
+      if (!hasJd) {
+        showManualJdModal((pastedJd) => {
+          runAutofill(null, pastedJd);
+        });
+      } else {
+        await runAutofill();
+      }
     });
 
     closeBtn.addEventListener("click", (e) => {
@@ -994,10 +1005,69 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
     });
   }
 
+  // On-page modal to paste JD when no JD is detected on form page
+  function showManualJdModal(onProceed) {
+    let modal = document.getElementById("jobagent-jd-modal");
+    if (modal) modal.remove();
+
+    modal = document.createElement("div");
+    modal.id = "jobagent-jd-modal";
+    modal.innerHTML = `
+      <div class="jobagent-jd-modal-header">
+        <div class="jobagent-jd-title">
+          <span>📝</span>
+          <span>No JD on this page</span>
+        </div>
+        <button class="jobagent-close-btn" id="jobagentCloseJdModalBtn" title="Close">×</button>
+      </div>
+      <p class="jobagent-jd-desc">Paste the job description below to tailor your resume & form fields:</p>
+      <textarea id="jobagent-manual-jd-input" placeholder="Paste Job Description (responsibilities, skills, requirements)..." rows="4"></textarea>
+      <div class="jobagent-jd-btn-row">
+        <button id="jobagent-tailor-btn" class="jobagent-btn-primary">⚡ Tailor & Autofill</button>
+        <button id="jobagent-default-btn" class="jobagent-btn-secondary">📄 Use Default Profile</button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const input = document.getElementById("jobagent-manual-jd-input");
+    const tailorBtn = document.getElementById("jobagent-tailor-btn");
+    const defaultBtn = document.getElementById("jobagent-default-btn");
+    const closeBtn = document.getElementById("jobagentCloseJdModalBtn");
+
+    try {
+      chrome.storage.local.get(["customJdText"], (res) => {
+        if (res?.customJdText && input) {
+          input.value = res.customJdText;
+        }
+      });
+    } catch (e) {}
+
+    input.focus();
+
+    closeBtn.addEventListener("click", () => modal.remove());
+
+    tailorBtn.addEventListener("click", () => {
+      const pastedJd = input.value.trim();
+      modal.remove();
+      if (pastedJd) {
+        try {
+          chrome.storage.local.set({ customJdText: pastedJd });
+        } catch (e) {}
+      }
+      onProceed(pastedJd);
+    });
+
+    defaultBtn.addEventListener("click", () => {
+      modal.remove();
+      onProceed("");
+    });
+  }
+
   // ==========================================
   // 5. MASTER AUTOFILL & TAILORING EXECUTION
   // ==========================================
-  async function runAutofill(passedProfile = null) {
+  async function runAutofill(passedProfile = null, manualJd = "") {
     if (isAutofilling) return;
     isAutofilling = true;
 
@@ -1011,9 +1081,17 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         return { success: false, message: "Profile not found" };
       }
 
-      // 1. Scrape Job Description & Company from Active Page
+      // 1. Scrape Job Description & Company from Active Page (or use pasted manual JD)
       const jobDetails = extractJobDetails();
-      const hasJd = hasGenuineJobDescription(jobDetails.description, jobDetails.title);
+      let hasJd = false;
+
+      if (manualJd && manualJd.trim().length > 15) {
+        jobDetails.description = manualJd.trim();
+        hasJd = true;
+      } else {
+        hasJd = hasGenuineJobDescription(jobDetails.description, jobDetails.title);
+      }
+
       let tailoredData = null;
       let tailoredFile = null;
 
@@ -1083,6 +1161,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
 
         // First Name
         if (
+          !isTextarea &&
           (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") ||
            sig.includes("first_name") || sig.includes("given-name") || sig.includes("first-name") ||
            directSig.includes("firstname") || directSig.includes("first_name")) &&
@@ -1092,9 +1171,10 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
         // Last Name
         else if (
-          sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") ||
-          sig.includes("surname") || sig.includes("last_name") || sig.includes("family-name") ||
-          sig.includes("last-name") || directSig.includes("lastname") || directSig.includes("last_name")
+          !isTextarea &&
+          (sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") ||
+           sig.includes("surname") || sig.includes("last_name") || sig.includes("family-name") ||
+           sig.includes("last-name") || directSig.includes("lastname") || directSig.includes("last_name"))
         ) {
           const parts = profile.name.split(" ");
           const lastName = profile.last_name || (parts.length > 1 ? parts.slice(1).join(" ") : "");
@@ -1102,6 +1182,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
         // Full Name (Matches "Name *", "Full Name", "Your Name", etc.)
         else if (
+          !isTextarea &&
           (/\b(full\s*name|candidate\s*name|applicant\s*name|your\s*name)\b/i.test(sig) ||
            (/\bname\b/i.test(sig) && !sig.includes("first") && !sig.includes("last") &&
             !sig.includes("company") && !sig.includes("user") && !sig.includes("school") &&
@@ -1111,18 +1192,19 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
         // Confirm Email (check before generic email)
         else if (
-          sig.includes("confirm your email") || sig.includes("confirm email") ||
-          sig.includes("confirm_email") || sig.includes("email confirmation") ||
-          sig.includes("re-enter email") || sig.includes("repeat email") || sig.includes("verify email")
+          !isTextarea &&
+          (sig.includes("confirm your email") || sig.includes("confirm email") ||
+           sig.includes("confirm_email") || sig.includes("email confirmation") ||
+           sig.includes("re-enter email") || sig.includes("repeat email") || sig.includes("verify email"))
         ) {
           if (setNativeValue(el, profile.email)) filledCount++;
         }
         // Email
-        else if (el.type === "email" || sig.includes("email") || sig.includes("e-mail")) {
+        else if (!isTextarea && (el.type === "email" || sig.includes("email") || sig.includes("e-mail"))) {
           if (setNativeValue(el, profile.email)) filledCount++;
         }
         // Phone
-        else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell") || sig.includes("contact number")) {
+        else if (!isTextarea && (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell") || sig.includes("contact number"))) {
           const containerText = el.parentElement?.innerText || el.closest(".form-group, div, [class*='phone'], [class*='input']")?.innerText || "";
           let phoneToFill = profile.phone || "+91-7972379015";
           if (containerText.includes("+91") || containerText.includes("+1") || containerText.includes("flag")) {
@@ -1131,7 +1213,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           if (setNativeValue(el, phoneToFill)) filledCount++;
         }
         // City (check before general location/address)
-        else if ((sig.includes("city") || sig.includes("current city")) && !sig.includes("state") && !sig.includes("country")) {
+        else if (!isTextarea && (sig.includes("city") || sig.includes("current city")) && !sig.includes("state") && !sig.includes("country")) {
           const loc = profile.city || (profile.location ? profile.location.split(",")[0].trim() : "Pune");
           if (setNativeValue(el, loc)) filledCount++;
         }
@@ -1395,7 +1477,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         if (!isContextValid()) return false;
 
         if (request.action === "AUTOFILL_FORM") {
-          runAutofill(request.profile).then((res) => {
+          runAutofill(request.profile, request.manualJd || "").then((res) => {
             if (isContextValid()) {
               try {
                 sendResponse(res);
@@ -1424,7 +1506,12 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             try {
               const jd = extractJobDetails();
               const profile = request.profile || (await getProfile());
-              const hasJd = hasGenuineJobDescription(jd.description, jd.title);
+
+              if (request.manualJd && request.manualJd.trim().length > 15) {
+                jd.description = request.manualJd.trim();
+              }
+
+              const hasJd = Boolean(request.manualJd && request.manualJd.trim().length > 15) || hasGenuineJobDescription(jd.description, jd.title);
               const tailored = await tailorResumeForJob(jd, profile, hasJd);
               const blob = buildTailoredPdfBlob(tailored, profile);
 
@@ -1439,8 +1526,8 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
                   try {
                     sendResponse({
                       success: true,
-                      jobTitle: tailored.is_default ? (profile.current_title || "Backend Developer") : jd.title,
-                      company: tailored.is_default ? "Default Profile" : jd.company,
+                      jobTitle: tailored.is_default ? (profile.current_title || "Backend Developer") : (tailored.title || jd.title),
+                      company: tailored.is_default ? "Default Profile" : (tailored.company || jd.company),
                       isDefault: Boolean(tailored.is_default),
                       filename: filename,
                       dataUrl: reader.result

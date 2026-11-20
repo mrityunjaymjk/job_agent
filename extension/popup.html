@@ -29,6 +29,19 @@
       <div id="pageFeedback" class="feedback-text">Ready to autofill on active tab</div>
     </div>
 
+    <!-- Manual JD Input Card (Shown when page has no JD or toggled by user) -->
+    <div class="custom-jd-card" id="customJdCard" style="display: none;">
+      <div class="custom-jd-header">
+        <div class="custom-jd-badge">
+          <span>📝</span>
+          <span id="customJdBadgeText">No JD on Page - Paste JD to Tailor:</span>
+        </div>
+        <button type="button" class="btn-clear-jd" id="clearCustomJdBtn" title="Clear pasted JD">Clear</button>
+      </div>
+      <textarea id="customJdInput" class="custom-jd-textarea" rows="3" placeholder="Paste Job Description (JD) / Requirements here to tailor resume, skills & answers..."></textarea>
+      <div class="custom-jd-caption">💡 Paste JD from previous page or job post to customize bullets & keywords. Leave empty for default profile.</div>
+    </div>
+
     <!-- Navigation Tabs -->
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-personal">👤 Personal</button>
@@ -107,6 +120,10 @@
         <button id="previewTailoredBtn" class="btn-micro" title="Preview tailored PDF in new tab">
           👁️ Preview Tailored PDF
         </button>
+      </div>
+
+      <div class="custom-jd-toggle-row">
+        <button type="button" id="toggleCustomJdBtn" class="link-btn">✏️ Paste or edit Job Description manually</button>
       </div>
 
       <div class="form-group checkbox-row" style="margin-bottom: 8px;">

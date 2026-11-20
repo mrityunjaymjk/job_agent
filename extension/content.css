@@ -104,3 +104,126 @@
   background-color: rgba(16, 185, 129, 0.08) !important;
   transition: all 0.4s ease !important;
 }
+
+/* On-Page Manual JD Modal (Prompted when no JD is detected on form page) */
+#jobagent-jd-modal {
+  position: fixed;
+  bottom: 74px;
+  right: 24px;
+  width: 350px;
+  max-width: 90vw;
+  background: #0f172a;
+  border: 1px solid #6366f1;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 18px rgba(99, 102, 241, 0.35);
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #f8fafc;
+  animation: jobagent-slide-up 0.25s ease-out;
+}
+
+@keyframes jobagent-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.jobagent-jd-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.jobagent-jd-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.jobagent-jd-desc {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+
+#jobagent-manual-jd-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f8fafc;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+}
+
+#jobagent-manual-jd-input:focus {
+  outline: none;
+  border-color: #818cf8;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.jobagent-jd-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.jobagent-btn-primary {
+  flex: 1.2;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.jobagent-btn-primary:hover {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+}
+
+.jobagent-btn-secondary {
+  flex: 1;
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.jobagent-btn-secondary:hover {
+  background: #334155;
+  color: #f8fafc;
+}
