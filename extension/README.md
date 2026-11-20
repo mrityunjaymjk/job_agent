@@ -8,6 +8,7 @@ Works seamlessly on **Greenhouse, Lever, Workday, LinkedIn, Indeed, SmartRecruit
 
 ## 🌟 Why Use the Chrome Extension?
 
+- **🎯 Dynamic Resume Tailoring to Job Descriptions (JD)**: Automatically scans the active role title, company, and JD requirements on the page. Calls Gemini AI to tailor your headline, summary, skills prioritization, and achievement bullets, and compiles a bespoke ATS PDF directly in your browser to attach!
 - **Zero Bot Detection / No Cloudflare Blocks**: Runs inside your authentic, everyday Google Chrome browser with your real browser fingerprint and IP.
 - **No Sign-In / 2FA Headaches**: You are already logged into LinkedIn, Indeed, and Workday on your browser.
 - **1-Click Form Filling**: Automatically matches and fills personal details, contact info, experience, portfolio links, and diversity questions.

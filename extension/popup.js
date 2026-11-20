@@ -15,6 +15,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const copyResumeTextBtn = document.getElementById("copyResumeTextBtn");
   const resumeFileInput = document.getElementById("resumeFileInput");
 
+  // JD Tailor elements
+  const detectedJobTitleEl = document.getElementById("detectedJobTitle");
+  const detectedCompanyEl = document.getElementById("detectedCompany");
+  const previewTailoredBtn = document.getElementById("previewTailoredBtn");
+  const enableTailoredResumeEl = document.getElementById("enableTailoredResume");
+
   let currentProfile = {};
 
   // Tab switching
@@ -27,6 +33,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (targetTab) targetTab.classList.add("active");
     });
   });
+
+  // Query Active Tab for Live Job Description
+  function refreshActiveTabJD() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs[0] && tabs[0].id) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "GET_ACTIVE_JD" }, (res) => {
+          if (chrome.runtime.lastError || !res) {
+            if (detectedJobTitleEl) detectedJobTitleEl.textContent = "General Application";
+            if (detectedCompanyEl) detectedCompanyEl.textContent = "Ready to tailor on any career page";
+            return;
+          }
+          if (detectedJobTitleEl && res.title) {
+            detectedJobTitleEl.textContent = res.title;
+          }
+          if (detectedCompanyEl && res.company) {
+            detectedCompanyEl.textContent = res.company;
+          }
+        });
+      }
+    });
+  }
 
   // Load Profile from chrome.storage or fallback to bundled profile_data.json / example
   async function loadProfile() {
@@ -81,6 +108,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("school").value = p.school || "";
     document.getElementById("gradYear").value = p.grad_year || "";
     document.getElementById("resumeRawText").value = p.resume_raw_text || p.experience || "";
+
+    if (enableTailoredResumeEl) {
+      enableTailoredResumeEl.checked = p.enable_tailored_resume !== false;
+    }
 
     // Resume File Card
     if (p.resume_filename) {
@@ -146,6 +177,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       school: document.getElementById("school").value.trim(),
       grad_year: document.getElementById("gradYear").value.trim(),
       resume_raw_text: document.getElementById("resumeRawText").value.trim(),
+      enable_tailored_resume: enableTailoredResumeEl ? enableTailoredResumeEl.checked : true,
 
       // File attributes preserved
       resume_filename: currentProfile.resume_filename || "Resume.pdf",
@@ -237,6 +269,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // Preview Tailored PDF for Active Page JD
+  if (previewTailoredBtn) {
+    previewTailoredBtn.addEventListener("click", async () => {
+      previewTailoredBtn.textContent = "⏳ Generating...";
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.id) {
+        alert("Please open a job application tab to preview tailoring.");
+        previewTailoredBtn.textContent = "👁️ Preview Tailored PDF";
+        return;
+      }
+
+      chrome.tabs.sendMessage(
+        tab.id,
+        { action: "GENERATE_TAILORED_PREVIEW", profile: collectUI() },
+        (res) => {
+          previewTailoredBtn.textContent = "👁️ Preview Tailored PDF";
+          if (chrome.runtime.lastError || !res || !res.dataUrl) {
+            alert("Please make sure you are on a webpage with a job description.");
+            return;
+          }
+          // Open PDF preview in a new window/tab
+          const w = window.open();
+          w.document.write(`
+            <html>
+              <head><title>Tailored Resume Preview - ${res.company}</title></head>
+              <body style="margin:0; background:#1e293b;">
+                <iframe src="${res.dataUrl}" style="border:0; width:100vw; height:100vh;" allowfullscreen></iframe>
+              </body>
+            </html>
+          `);
+        }
+      );
+    });
+  }
+
   // Save Button
   saveBtn.addEventListener("click", () => {
     currentProfile = collectUI();
@@ -278,7 +345,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Autofill Button
   autofillBtn.addEventListener("click", async () => {
-    feedbackEl.textContent = "🔍 Scanning and autofilling active page...";
+    feedbackEl.textContent = "🎯 Tailoring resume to JD & filling...";
     feedbackEl.style.color = "#818cf8";
 
     currentProfile = collectUI();
@@ -302,8 +369,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
           }
           if (response && response.success) {
-            const filesMsg = response.filesUploaded > 0 ? ` (+${response.filesUploaded} resume attached)` : "";
-            feedbackEl.textContent = `🎉 Filled ${response.count} fields${filesMsg}!`;
+            const tailMsg = response.tailoredFor ? ` (🎯 Tailored for ${response.tailoredFor})` : "";
+            feedbackEl.textContent = `🎉 Filled ${response.count} fields${tailMsg}!`;
             feedbackEl.style.color = "#34d399";
           } else {
             feedbackEl.textContent = response?.message || "No matching application fields found.";
@@ -319,4 +386,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Initialize
   await loadProfile();
+  refreshActiveTabJD();
 });
