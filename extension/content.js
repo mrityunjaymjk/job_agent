@@ -32,6 +32,30 @@
     }
   }
 
+  // Route Gemini API calls to Background Service Worker (Bypasses all page CORS and CSP restrictions)
+  function callGeminiApi(prompt, profile) {
+    return new Promise((resolve) => {
+      if (!profile.gemini_api_key || !profile.enable_ai_answers) {
+        return resolve(null);
+      }
+      chrome.runtime.sendMessage(
+        {
+          action: "CALL_GEMINI",
+          apiKey: profile.gemini_api_key,
+          model: profile.gemini_model || "gemini-1.5-flash",
+          prompt: prompt
+        },
+        (resp) => {
+          if (chrome.runtime.lastError || !resp || !resp.success) {
+            console.warn("[JobAgent] Background Gemini call failed or timed out:", chrome.runtime.lastError?.message || resp?.error);
+            return resolve(null);
+          }
+          resolve(resp.text);
+        }
+      );
+    });
+  }
+
   // React/Angular/Vue compatible native value setter
   function setNativeValue(element, value) {
     if (!element || value === undefined || value === null) return false;
@@ -88,10 +112,11 @@
     const parentLabel = el.closest("label");
     if (parentLabel) parts.push(parentLabel.innerText);
 
-    const container = el.closest(".form-group, .field, [class*='formRow'], [class*='field'], tr, div");
+    // Immediate parent text (limit to 120 chars so we don't leak global form container labels)
+    const container = el.closest(".form-group, .field, [class*='formRow'], [class*='field'], tr, p");
     if (container) {
       const text = container.innerText || "";
-      if (text.length < 250) parts.push(text);
+      if (text.length < 120) parts.push(text);
     }
 
     return parts.join(" ").toLowerCase();
@@ -129,21 +154,26 @@
 
     // 1. Job Title
     const titleSelectors = [
-      ".app-title", "#header h1", ".posting-headline h2", ".main-header h2",
+      "h1.app-title", "#header h1", ".posting-headline h2", ".main-header h2",
       "[data-automation-id='jobPostingHeader']", ".job-details-jobs-unified-top-card__job-title",
       ".jobs-unified-top-card__job-title", "h1.jobsearch-JobInfoHeader-title",
-      ".ashby-job-posting-heading", "h1[class*='title']", "h1[class*='job']", "h1", "h2[class*='title']"
+      ".ashby-job-posting-heading", "h1", "h2[class*='title']", "h2"
     ];
 
     for (const sel of titleSelectors) {
       const el = document.querySelector(sel);
       if (el && el.innerText.trim().length > 3) {
-        title = el.innerText.trim();
-        break;
+        const text = el.innerText.trim();
+        if (!text.toLowerCase().includes("apply") && !text.toLowerCase().includes("careers")) {
+          title = text;
+          break;
+        } else if (!title) {
+          title = text;
+        }
       }
     }
 
-    if (!title) {
+    if (!title || title.toLowerCase().includes("apply")) {
       const dt = document.title.split(/[-–|·]/)[0].trim();
       title = dt || "Software Engineer";
     }
@@ -166,10 +196,13 @@
     if (!company) {
       const host = window.location.hostname;
       const parts = host.split(".");
-      if (parts.length > 2 && !["www", "jobs", "boards", "careers", "apply"].includes(parts[0])) {
-        company = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-      } else if (document.title.includes(" at ")) {
-        company = document.title.split(" at ")[1].split(/[-–|·]/)[0].trim();
+      if (parts.length >= 2) {
+        // e.g. automationedge.com -> AutomationEdge
+        let domainBase = parts[parts.length - 2];
+        if (["co", "com", "org", "net"].includes(domainBase) && parts.length >= 3) {
+          domainBase = parts[parts.length - 3];
+        }
+        company = domainBase.charAt(0).toUpperCase() + domainBase.slice(1);
       } else {
         company = "Target Company";
       }
@@ -179,7 +212,7 @@
     const descSelectors = [
       "#jobDescriptionText", "[data-automation-id='jobPostingDescription']",
       ".job-description", ".jobs-description__content", ".section-wrapper",
-      "#content", "article", "[class*='job-description']", "[class*='description']", "main"
+      ".entry-content", ".awsm_job_openings", "#content", "article", "[class*='job-description']", "[class*='description']", "main"
     ];
 
     for (const sel of descSelectors) {
@@ -232,12 +265,8 @@
     ];
     let coverLetter = `Dear Hiring Team at ${jobDetails.company},\n\nI am writing to express my strong interest in the ${jobDetails.title} role. With hands-on experience in ${topMatches.length ? topMatches.join(", ") : "backend development, Java Spring Boot, and database architecture"}, I am eager to contribute immediately to ${jobDetails.company}'s engineering goals.\n\nIn my previous work, I focused on building high-performance REST APIs and scalable backend architectures. I would welcome the opportunity to discuss how my skill set aligns with your team's needs.\n\nSincerely,\n${profile.name}`;
 
-    // Deep Qualitative Tailoring with Gemini REST API
+    // Qualitative Tailoring with Background Gemini Worker
     if (profile.gemini_api_key && profile.enable_ai_answers !== false) {
-      const apiKey = profile.gemini_api_key.trim();
-      const model = profile.gemini_model || "gemini-1.5-flash";
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
       const prompt = `You are an expert ATS resume strategist. Tailor this candidate's resume specifically for this job posting.
 
 CANDIDATE:
@@ -253,7 +282,7 @@ Job Description:
 ${jobDetails.description.slice(0, 1800)}
 
 Instructions:
-Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fence) with this exact schema:
+Return ONLY a valid JSON object (no markdown formatting, no backticks) with this exact schema:
 {
   "headline": "${jobDetails.title} - ${topMatches.slice(0, 3).join(", ") || "Java / Backend"}",
   "summary": "3-sentence ATS summary under 75 words highlighting alignment with ${jobDetails.company} and required tech stack",
@@ -265,30 +294,20 @@ Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fen
   "cover_letter": "Concise 3-paragraph tailored cover letter for ${jobDetails.company}"
 }`;
 
-      try {
-        const resp = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 600, temperature: 0.2 }
-          })
-        });
-
-        if (resp.ok) {
-          const data = await resp.json();
-          let rawResp = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-          rawResp = rawResp.replace(/^```json/i, "").replace(/^```/i, "").replace(/```$/i, "").trim();
-          const parsed = JSON.parse(rawResp);
+      const aiText = await callGeminiApi(prompt, profile);
+      if (aiText) {
+        try {
+          let cleanJson = aiText.replace(/^```json/i, "").replace(/^```/i, "").replace(/```$/i, "").trim();
+          const parsed = JSON.parse(cleanJson);
           if (parsed.headline) headline = parsed.headline;
           if (parsed.summary) summary = parsed.summary;
           if (Array.isArray(parsed.tailored_bullets) && parsed.tailored_bullets.length) {
             tailoredBullets = parsed.tailored_bullets;
           }
           if (parsed.cover_letter) coverLetter = parsed.cover_letter;
+        } catch (e) {
+          console.warn("[JobAgent] Could not parse Gemini response JSON, using fallback:", e);
         }
-      } catch (e) {
-        console.warn("[JobAgent] Gemini resume tailoring error, using heuristic fallback:", e);
       }
     }
 
@@ -442,7 +461,7 @@ Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fen
     y -= 11;
     addText("Certifications: HackerRank 3-Star MySQL | 3-Star Problem Solving (Java / JavaScript)", "F1", 8.5, leftMargin, y);
 
-    // Compile into PDF 1.4 Binary with exact object byte offsets
+    // Compile into PDF 1.4 Binary
     const streamContent = streamParts.join("\n");
     const streamBytes = new TextEncoder().encode(streamContent);
 
@@ -511,8 +530,13 @@ Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fen
       fileInput.dispatchEvent(new Event("input", { bubbles: true }));
       fileInput.classList.add("jobagent-highlight");
 
-      const parentDrop = fileInput.closest(".dropzone, .file-upload, [class*='upload'], [class*='drop'], label");
-      if (parentDrop) parentDrop.classList.add("jobagent-highlight");
+      // Visually update nearby filename displays (e.g. WordPress Contact Form 7, custom dropzones)
+      const container = fileInput.closest(".wpcf7-form-control-wrap, .form-group, div, label");
+      if (container) {
+        container.classList.add("jobagent-highlight");
+        const nameBadge = container.querySelector(".file-name, .custom-file-label, .file-upload-status");
+        if (nameBadge) nameBadge.textContent = fileToAttach.name;
+      }
 
       return true;
     } catch (e) {
@@ -579,296 +603,324 @@ Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fen
     const pillText = document.querySelector(".jobagent-text");
     if (pillText) pillText.textContent = "Scanning JD...";
 
-    const profile = passedProfile || (await getProfile());
-    if (!profile) {
-      showToast("Please configure your profile in the Job Agent popup first!", false);
-      if (pillText) pillText.textContent = "Tailor & Autofill";
-      isAutofilling = false;
-      return { success: false, message: "Profile not found" };
-    }
+    try {
+      const profile = passedProfile || (await getProfile());
+      if (!profile) {
+        showToast("Please configure your profile in the Job Agent popup first!", false);
+        return { success: false, message: "Profile not found" };
+      }
 
-    // 1. Scrape Job Description from Active Page
-    const jobDetails = extractJobDetails();
-    let tailoredData = null;
-    let tailoredFile = null;
+      // 1. Scrape Job Description from Active Page
+      const jobDetails = extractJobDetails();
+      let tailoredData = null;
+      let tailoredFile = null;
 
-    if (jobDetails.title && profile.enable_tailored_resume !== false) {
-      if (pillText) pillText.textContent = `Tailoring for ${jobDetails.company.slice(0, 10)}...`;
-      tailoredData = await tailorResumeForJob(jobDetails, profile);
-      const pdfBlob = buildTailoredPdfBlob(tailoredData, profile);
-      const cleanCompany = (jobDetails.company || "Employer").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 20);
-      const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
-      const filename = `${cleanName}_Resume_${cleanCompany}.pdf`;
-      tailoredFile = new File([pdfBlob], filename, { type: "application/pdf", lastModified: Date.now() });
-    }
+      if (jobDetails.title && profile.enable_tailored_resume !== false) {
+        if (pillText) pillText.textContent = `Tailoring for ${jobDetails.company.slice(0, 10)}...`;
+        tailoredData = await tailorResumeForJob(jobDetails, profile);
+        const pdfBlob = buildTailoredPdfBlob(tailoredData, profile);
+        const cleanCompany = (jobDetails.company || "Employer").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 20);
+        const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+        const filename = `${cleanName}_Resume_${cleanCompany}.pdf`;
+        tailoredFile = new File([pdfBlob], filename, { type: "application/pdf", lastModified: Date.now() });
+      }
 
-    if (pillText) pillText.textContent = "Autofilling...";
+      if (pillText) pillText.textContent = "Autofilling...";
 
-    let filledCount = 0;
-    let filesUploaded = 0;
+      let filledCount = 0;
+      let filesUploaded = 0;
 
-    // 2. Resume File Inputs (<input type="file">)
-    const fileInputs = document.querySelectorAll("input[type='file']");
-    for (const fi of fileInputs) {
-      const sig = getElementSignature(fi);
-      if (
-        sig.includes("resume") || sig.includes("cv") || sig.includes("curriculum") ||
-        sig.includes("attachment") || sig.includes("document") || fileInputs.length === 1
-      ) {
-        if (attachResumeFile(fi, profile, tailoredFile)) {
-          filesUploaded++;
-          filledCount++;
-        }
-      }
-    }
-
-    // 3. Text Inputs & Textareas
-    const textElements = document.querySelectorAll(
-      "input:not([type='hidden']):not([type='radio']):not([type='checkbox']):not([type='file']):not([type='submit']):not([type='button']), textarea"
-    );
-
-    for (const el of textElements) {
-      const sig = getElementSignature(el);
-      const isTextarea = el.tagName.toLowerCase() === "textarea";
-
-      // First Name
-      if (
-        (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") || sig.includes("first_name")) &&
-        !sig.includes("last")
-      ) {
-        if (setNativeValue(el, profile.first_name || profile.name.split(" ")[0])) filledCount++;
-      }
-      // Last Name
-      else if (sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") || sig.includes("surname") || sig.includes("last_name")) {
-        const parts = profile.name.split(" ");
-        const lastName = profile.last_name || (parts.length > 1 ? parts.slice(1).join(" ") : "");
-        if (setNativeValue(el, lastName)) filledCount++;
-      }
-      // Full Name
-      else if (
-        (sig.includes("full name") || sig.includes("your name") || sig.includes("legal name") || sig === "name" || sig.startsWith("name ")) &&
-        !sig.includes("first") && !sig.includes("last") && !sig.includes("company") && !sig.includes("school")
-      ) {
-        if (setNativeValue(el, profile.name)) filledCount++;
-      }
-      // Email
-      else if (el.type === "email" || sig.includes("email") || sig.includes("e-mail")) {
-        if (setNativeValue(el, profile.email)) filledCount++;
-      }
-      // Phone
-      else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell")) {
-        if (setNativeValue(el, profile.phone)) filledCount++;
-      }
-      // Location / City / Address
-      else if (sig.includes("city") || sig.includes("location") || sig.includes("current city") || sig.includes("address")) {
-        const loc = sig.includes("city") ? profile.city : (profile.location || profile.city);
-        if (setNativeValue(el, loc)) filledCount++;
-      }
-      // Country
-      else if (sig.includes("country") && !sig.includes("code")) {
-        if (setNativeValue(el, profile.country || "India")) filledCount++;
-      }
-      // LinkedIn
-      else if (sig.includes("linkedin")) {
-        if (setNativeValue(el, profile.linkedin)) filledCount++;
-      }
-      // GitHub
-      else if (sig.includes("github")) {
-        if (setNativeValue(el, profile.github)) filledCount++;
-      }
-      // Portfolio / Website
-      else if (sig.includes("portfolio") || sig.includes("website") || sig.includes("personal site") || sig.includes("url")) {
-        if (setNativeValue(el, profile.portfolio || profile.github)) filledCount++;
-      }
-      // Experience years
-      else if (sig.includes("years of experience") || sig.includes("total experience") || sig.includes("experience in years")) {
-        const cleanYears = profile.years_exp.match(/\d+/) ? profile.years_exp.match(/\d+/)[0] : "1";
-        if (setNativeValue(el, cleanYears)) filledCount++;
-      }
-      // Notice Period
-      else if (sig.includes("notice period") || sig.includes("notice")) {
-        if (setNativeValue(el, profile.notice_period || "Immediate (2 weeks)")) filledCount++;
-      }
-      // Salary / Compensation
-      else if (sig.includes("desired salary") || sig.includes("expected salary") || sig.includes("compensation")) {
-        const cleanSalary = profile.expected_salary.replace(/[^\d]/g, "") || "10000";
-        if (setNativeValue(el, cleanSalary)) filledCount++;
-      }
-      // Plain text resume paste
-      else if (
-        sig.includes("paste resume") || sig.includes("resume text") ||
-        sig.includes("plain text resume") || sig.includes("copy and paste your resume") ||
-        sig.includes("resume content")
-      ) {
-        const textToFill = tailoredData
-          ? `${profile.name}\n${tailoredData.headline}\n${profile.email} | ${profile.phone}\n\nSUMMARY\n${tailoredData.summary}\n\nSKILLS\n${tailoredData.prioritized_skills.join(", ")}\n\nEXPERIENCE\n${profile.experience}`
-          : (profile.resume_raw_text || profile.experience);
-        if (setNativeValue(el, textToFill)) filledCount++;
-      }
-      // Current Employer / Company
-      else if (
-        (sig.includes("current company") || sig.includes("most recent company") || sig.includes("current employer") || sig.includes("employer") || sig.includes("organization")) &&
-        !sig.includes("school")
-      ) {
-        if (setNativeValue(el, profile.current_company || "Digitalllydrunk Pvt Ltd")) filledCount++;
-      }
-      // Current Job Title
-      else if (
-        sig.includes("job title") || sig.includes("current title") || sig.includes("designation") ||
-        sig.includes("position title") || sig.includes("current role")
-      ) {
-        if (setNativeValue(el, profile.current_title || "Backend Developer")) filledCount++;
-      }
-      // Employment Start Date
-      else if (sig.includes("start date") || sig.includes("from date") || sig.includes("start month") || sig.includes("start year")) {
-        if (setNativeValue(el, profile.experience_start || "Nov 2025")) filledCount++;
-      }
-      // Employment End Date
-      else if (sig.includes("end date") || sig.includes("to date") || sig.includes("end month") || sig.includes("end year")) {
-        if (setNativeValue(el, profile.experience_end || "Present")) filledCount++;
-      }
-      // Degree / Qualification
-      else if (sig.includes("degree") || sig.includes("qualification") || sig.includes("highest education") || sig.includes("education level")) {
-        if (setNativeValue(el, profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)")) filledCount++;
-      }
-      // Major / Field of Study
-      else if (sig.includes("major") || sig.includes("field of study") || sig.includes("discipline")) {
-        if (setNativeValue(el, profile.major || "Advanced Computing / Computer Science")) filledCount++;
-      }
-      // College / School / University
-      else if (sig.includes("school") || sig.includes("university") || sig.includes("college") || sig.includes("institution")) {
-        if (setNativeValue(el, profile.school || "Sunbeam Institute of Information Technology")) filledCount++;
-      }
-      // Graduation Year
-      else if (sig.includes("grad year") || sig.includes("graduation year") || sig.includes("completion year") || sig.includes("year graduated")) {
-        if (setNativeValue(el, profile.grad_year || "2025")) filledCount++;
-      }
-      // Cover Letter & Open-Ended Textarea
-      else if (isTextarea || el.clientHeight > 50) {
-        if (sig.includes("cover letter")) {
-          const letter = tailoredData?.cover_letter || `Dear Hiring Team at ${jobDetails.company},\n\nI am writing to express my strong interest in the ${jobDetails.title} role. With hands-on experience in Java Spring Boot and backend engineering, I am excited about the opportunity to contribute to your engineering goals.\n\nSincerely,\n${profile.name}`;
-          if (setNativeValue(el, letter)) filledCount++;
-        } else if (profile.enable_ai_answers && profile.gemini_api_key && !el.value) {
-          const label = el.closest(".form-group, .field, div")?.innerText || sig;
-          const aiAnswer = await answerWithGemini(label.slice(0, 300), profile);
-          if (aiAnswer && setNativeValue(el, aiAnswer)) filledCount++;
-        }
-      }
-    }
-
-    // 4. Radio Buttons (Work Auth, Sponsorship, etc.)
-    const radios = document.querySelectorAll("input[type='radio']");
-    for (const r of radios) {
-      const sig = getElementSignature(r);
-      const val = (r.value || "").toLowerCase();
-
-      // Authorized to work -> YES
-      if (
-        sig.includes("authorized to work") || sig.includes("legally authorized") ||
-        sig.includes("eligible to work") || sig.includes("legal right")
-      ) {
-        if (val === "yes" || val === "true" || sig.includes("yes") || sig.includes("authorized")) {
-          if (!r.checked) {
-            r.click();
-            r.checked = true;
-            r.dispatchEvent(new Event("change", { bubbles: true }));
+      // 2. Resume File Inputs (<input type="file">)
+      const fileInputs = document.querySelectorAll("input[type='file']");
+      for (const fi of fileInputs) {
+        const sig = getElementSignature(fi);
+        if (
+          sig.includes("resume") || sig.includes("cv") || sig.includes("curriculum") ||
+          sig.includes("upload") || sig.includes("attachment") || sig.includes("document") || fileInputs.length === 1
+        ) {
+          if (attachResumeFile(fi, profile, tailoredFile)) {
+            filesUploaded++;
             filledCount++;
           }
         }
       }
 
-      // Sponsorship -> NO
-      if (
-        sig.includes("require sponsorship") || sig.includes("visa sponsorship") ||
-        sig.includes("future sponsorship") || sig.includes("sponsorship in the future")
-      ) {
-        if (val === "no" || val === "false" || sig.includes("no") || sig.includes("not require")) {
-          if (!r.checked) {
-            r.click();
-            r.checked = true;
-            r.dispatchEvent(new Event("change", { bubbles: true }));
-            filledCount++;
+      // 3. Text Inputs & Textareas
+      const textElements = document.querySelectorAll(
+        "input:not([type='hidden']):not([type='radio']):not([type='checkbox']):not([type='file']):not([type='submit']):not([type='button']), textarea"
+      );
+
+      for (const el of textElements) {
+        const sig = getElementSignature(el);
+        const isTextarea = el.tagName.toLowerCase() === "textarea";
+
+        // First Name
+        if (
+          (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") || sig.includes("first_name")) &&
+          !sig.includes("last")
+        ) {
+          if (setNativeValue(el, profile.first_name || profile.name.split(" ")[0])) filledCount++;
+        }
+        // Last Name
+        else if (sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") || sig.includes("surname") || sig.includes("last_name")) {
+          const parts = profile.name.split(" ");
+          const lastName = profile.last_name || (parts.length > 1 ? parts.slice(1).join(" ") : "");
+          if (setNativeValue(el, lastName)) filledCount++;
+        }
+        // Full Name (Matches "Name *", "Full Name", "Your Name", etc.)
+        else if (
+          /\b(name|full\s*name|your\s*name|candidate\s*name|applicant\s*name)\b/i.test(sig) &&
+          !sig.includes("first") && !sig.includes("last") && !sig.includes("company") &&
+          !sig.includes("school") && !sig.includes("user")
+        ) {
+          if (setNativeValue(el, profile.name)) filledCount++;
+        }
+        // Email
+        else if (el.type === "email" || sig.includes("email") || sig.includes("e-mail")) {
+          if (setNativeValue(el, profile.email)) filledCount++;
+        }
+        // Phone
+        else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell")) {
+          if (setNativeValue(el, profile.phone)) filledCount++;
+        }
+        // Technical Skills / Skill Sets
+        else if (
+          (sig.includes("skill") || sig.includes("technical skill") || sig.includes("technolog")) &&
+          !sig.includes("years")
+        ) {
+          const skillsVal = Array.isArray(profile.skills) ? profile.skills.join(", ") : (profile.skills || "Java, Spring Boot, MySQL, REST APIs, React");
+          if (setNativeValue(el, skillsVal)) filledCount++;
+        }
+        // Current Profile / Short Description / Summary
+        else if (
+          sig.includes("current profile") || sig.includes("short description") ||
+          sig.includes("about your") || sig.includes("about yourself") ||
+          sig.includes("profile description") || sig.includes("bio")
+        ) {
+          const summaryVal = tailoredData?.summary || profile.experience || profile.resume_raw_text;
+          if (setNativeValue(el, summaryVal)) filledCount++;
+        }
+        // Location / City / Address
+        else if (sig.includes("city") || sig.includes("location") || sig.includes("current city") || sig.includes("address")) {
+          const loc = sig.includes("city") ? profile.city : (profile.location || profile.city);
+          if (setNativeValue(el, loc)) filledCount++;
+        }
+        // Country
+        else if (sig.includes("country") && !sig.includes("code")) {
+          if (setNativeValue(el, profile.country || "India")) filledCount++;
+        }
+        // LinkedIn
+        else if (sig.includes("linkedin")) {
+          if (setNativeValue(el, profile.linkedin)) filledCount++;
+        }
+        // GitHub
+        else if (sig.includes("github")) {
+          if (setNativeValue(el, profile.github)) filledCount++;
+        }
+        // Portfolio / Website
+        else if (sig.includes("portfolio") || sig.includes("website") || sig.includes("personal site") || sig.includes("url")) {
+          if (setNativeValue(el, profile.portfolio || profile.github)) filledCount++;
+        }
+        // Experience years (inputs only, NOT textareas!)
+        else if (
+          !isTextarea &&
+          (sig.includes("years of experience") || sig.includes("total experience") || sig.includes("experience in years"))
+        ) {
+          const cleanYears = profile.years_exp.match(/\d+/) ? profile.years_exp.match(/\d+/)[0] : "1";
+          if (setNativeValue(el, cleanYears)) filledCount++;
+        }
+        // Notice Period
+        else if (sig.includes("notice period") || sig.includes("notice")) {
+          if (setNativeValue(el, profile.notice_period || "Immediate (2 weeks)")) filledCount++;
+        }
+        // Salary / Compensation
+        else if (sig.includes("desired salary") || sig.includes("expected salary") || sig.includes("compensation")) {
+          const cleanSalary = profile.expected_salary.replace(/[^\d]/g, "") || "10000";
+          if (setNativeValue(el, cleanSalary)) filledCount++;
+        }
+        // Plain text resume paste
+        else if (
+          sig.includes("paste resume") || sig.includes("resume text") ||
+          sig.includes("plain text resume") || sig.includes("copy and paste your resume") ||
+          sig.includes("resume content")
+        ) {
+          const textToFill = tailoredData
+            ? `${profile.name}\n${tailoredData.headline}\n${profile.email} | ${profile.phone}\n\nSUMMARY\n${tailoredData.summary}\n\nSKILLS\n${tailoredData.prioritized_skills.join(", ")}\n\nEXPERIENCE\n${profile.experience}`
+            : (profile.resume_raw_text || profile.experience);
+          if (setNativeValue(el, textToFill)) filledCount++;
+        }
+        // Current Employer / Company
+        else if (
+          (sig.includes("current company") || sig.includes("most recent company") || sig.includes("current employer") || sig.includes("employer") || sig.includes("organization")) &&
+          !sig.includes("school")
+        ) {
+          if (setNativeValue(el, profile.current_company || "Digitalllydrunk Pvt Ltd")) filledCount++;
+        }
+        // Current Job Title
+        else if (
+          sig.includes("job title") || sig.includes("current title") || sig.includes("designation") ||
+          sig.includes("position title") || sig.includes("current role")
+        ) {
+          if (setNativeValue(el, profile.current_title || "Backend Developer")) filledCount++;
+        }
+        // Employment Start Date
+        else if (sig.includes("start date") || sig.includes("from date") || sig.includes("start month") || sig.includes("start year")) {
+          if (setNativeValue(el, profile.experience_start || "Nov 2025")) filledCount++;
+        }
+        // Employment End Date
+        else if (sig.includes("end date") || sig.includes("to date") || sig.includes("end month") || sig.includes("end year")) {
+          if (setNativeValue(el, profile.experience_end || "Present")) filledCount++;
+        }
+        // Degree / Qualification
+        else if (sig.includes("degree") || sig.includes("qualification") || sig.includes("highest education") || sig.includes("education level")) {
+          if (setNativeValue(el, profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)")) filledCount++;
+        }
+        // Major / Field of Study
+        else if (sig.includes("major") || sig.includes("field of study") || sig.includes("discipline")) {
+          if (setNativeValue(el, profile.major || "Advanced Computing / Computer Science")) filledCount++;
+        }
+        // College / School / University
+        else if (sig.includes("school") || sig.includes("university") || sig.includes("college") || sig.includes("institution")) {
+          if (setNativeValue(el, profile.school || "Sunbeam Institute of Information Technology")) filledCount++;
+        }
+        // Graduation Year
+        else if (sig.includes("grad year") || sig.includes("graduation year") || sig.includes("completion year") || sig.includes("year graduated")) {
+          if (setNativeValue(el, profile.grad_year || "2025")) filledCount++;
+        }
+        // Cover Letter & Open-Ended Textarea
+        else if (isTextarea || el.clientHeight > 50) {
+          if (sig.includes("cover letter")) {
+            const letter = tailoredData?.cover_letter || `Dear Hiring Team at ${jobDetails.company},\n\nI am writing to express my strong interest in the ${jobDetails.title} role. With hands-on experience in Java Spring Boot and backend engineering, I am excited about the opportunity to contribute to your engineering goals.\n\nSincerely,\n${profile.name}`;
+            if (setNativeValue(el, letter)) filledCount++;
+          } else if (profile.enable_ai_answers && profile.gemini_api_key && !el.value) {
+            const label = el.closest(".form-group, .field, div")?.innerText || sig;
+            const prompt = `Answer this job application question for a Java/Backend candidate named ${profile.name} applying for ${jobDetails.title} at ${jobDetails.company}. Question: "${label.slice(0, 200)}". Keep it 2-3 sentences, direct, first person.`;
+            const aiAnswer = await callGeminiApi(prompt, profile);
+            if (aiAnswer && setNativeValue(el, aiAnswer)) filledCount++;
           }
         }
       }
 
-      // 18+ years of age -> YES
-      if (sig.includes("18 years of age") || sig.includes("legal age") || sig.includes("are you 18")) {
-        if (val === "yes" || val === "true" || sig.includes("yes")) {
-          if (!r.checked) {
-            r.click();
-            r.checked = true;
-            r.dispatchEvent(new Event("change", { bubbles: true }));
-            filledCount++;
-          }
-        }
-      }
-    }
+      // 4. Radio Buttons (Work Auth, Sponsorship, etc.)
+      const radios = document.querySelectorAll("input[type='radio']");
+      for (const r of radios) {
+        const sig = getElementSignature(r);
+        const val = (r.value || "").toLowerCase();
 
-    // 5. Select Dropdowns
-    const selects = document.querySelectorAll("select");
-    for (const sel of selects) {
-      const sig = getElementSignature(sel);
-      let targetText = null;
-
-      if (sig.includes("country")) {
-        targetText = profile.country || "India";
-      } else if (sig.includes("gender")) {
-        targetText = profile.eeo_gender || "Prefer not to disclose";
-      } else if (sig.includes("disability")) {
-        targetText = profile.eeo_disability || "No";
-      } else if (sig.includes("veteran")) {
-        targetText = profile.eeo_veteran || "I am not a protected veteran";
-      } else if (sig.includes("how did you hear") || sig.includes("source")) {
-        targetText = "LinkedIn";
-      }
-
-      if (targetText) {
-        for (let i = 0; i < sel.options.length; i++) {
-          const opt = sel.options[i];
-          if (opt.text.toLowerCase().includes(targetText.toLowerCase())) {
-            if (sel.selectedIndex !== i) {
-              sel.selectedIndex = i;
-              sel.dispatchEvent(new Event("change", { bubbles: true }));
-              sel.classList.add("jobagent-highlight");
+        // Authorized to work -> YES
+        if (
+          sig.includes("authorized to work") || sig.includes("legally authorized") ||
+          sig.includes("eligible to work") || sig.includes("legal right")
+        ) {
+          if (val === "yes" || val === "true" || sig.includes("yes") || sig.includes("authorized")) {
+            if (!r.checked) {
+              r.click();
+              r.checked = true;
+              r.dispatchEvent(new Event("change", { bubbles: true }));
               filledCount++;
             }
-            break;
+          }
+        }
+
+        // Sponsorship -> NO
+        if (
+          sig.includes("require sponsorship") || sig.includes("visa sponsorship") ||
+          sig.includes("future sponsorship") || sig.includes("sponsorship in the future")
+        ) {
+          if (val === "no" || val === "false" || sig.includes("no") || sig.includes("not require")) {
+            if (!r.checked) {
+              r.click();
+              r.checked = true;
+              r.dispatchEvent(new Event("change", { bubbles: true }));
+              filledCount++;
+            }
+          }
+        }
+
+        // 18+ years of age -> YES
+        if (sig.includes("18 years of age") || sig.includes("legal age") || sig.includes("are you 18")) {
+          if (val === "yes" || val === "true" || sig.includes("yes")) {
+            if (!r.checked) {
+              r.click();
+              r.checked = true;
+              r.dispatchEvent(new Event("change", { bubbles: true }));
+              filledCount++;
+            }
           }
         }
       }
-    }
 
-    // 6. Checkboxes (Terms, consent)
-    const checkboxes = document.querySelectorAll("input[type='checkbox']");
-    for (const cb of checkboxes) {
-      const sig = getElementSignature(cb);
-      if (
-        sig.includes("agree") || sig.includes("terms") || sig.includes("consent") ||
-        sig.includes("privacy policy") || sig.includes("certify")
-      ) {
-        if (!cb.checked) {
-          cb.click();
-          cb.checked = true;
-          cb.dispatchEvent(new Event("change", { bubbles: true }));
-          filledCount++;
+      // 5. Select Dropdowns (Country, Experience, Gender, etc.)
+      const selects = document.querySelectorAll("select");
+      for (const sel of selects) {
+        const sig = getElementSignature(sel);
+        let targetText = null;
+
+        if (sig.includes("country")) {
+          targetText = profile.country || "India";
+        } else if (sig.includes("experience") || sig.includes("years")) {
+          targetText = "1"; // Matches "1 Years" or "1 Years +" or "Fresher"
+        } else if (sig.includes("gender")) {
+          targetText = profile.eeo_gender || "Prefer not to disclose";
+        } else if (sig.includes("disability")) {
+          targetText = profile.eeo_disability || "No";
+        } else if (sig.includes("veteran")) {
+          targetText = profile.eeo_veteran || "I am not a protected veteran";
+        } else if (sig.includes("how did you hear") || sig.includes("source")) {
+          targetText = "LinkedIn";
+        }
+
+        if (targetText) {
+          for (let i = 0; i < sel.options.length; i++) {
+            const opt = sel.options[i];
+            if (opt.text.toLowerCase().includes(targetText.toLowerCase()) || opt.value.toLowerCase().includes(targetText.toLowerCase())) {
+              if (sel.selectedIndex !== i) {
+                sel.selectedIndex = i;
+                sel.dispatchEvent(new Event("change", { bubbles: true }));
+                sel.classList.add("jobagent-highlight");
+                filledCount++;
+              }
+              break;
+            }
+          }
         }
       }
+
+      // 6. Checkboxes (Terms, consent)
+      const checkboxes = document.querySelectorAll("input[type='checkbox']");
+      for (const cb of checkboxes) {
+        const sig = getElementSignature(cb);
+        if (
+          sig.includes("agree") || sig.includes("terms") || sig.includes("consent") ||
+          sig.includes("privacy policy") || sig.includes("certify")
+        ) {
+          if (!cb.checked) {
+            cb.click();
+            cb.checked = true;
+            cb.dispatchEvent(new Event("change", { bubbles: true }));
+            filledCount++;
+          }
+        }
+      }
+
+      const tailNote = tailoredFile ? ` (🎯 Resume Tailored for ${jobDetails.company})` : "";
+      showToast(`Autofilled ${filledCount} fields${tailNote}!`, true);
+
+      return {
+        success: true,
+        count: filledCount,
+        filesUploaded: filesUploaded,
+        tailoredFor: jobDetails.company,
+        jobTitle: jobDetails.title
+      };
+    } catch (err) {
+      console.error("[JobAgent] Autofill runtime error:", err);
+      showToast("Error during autofill: " + err.message, false);
+      return { success: false, error: err.message };
+    } finally {
+      if (pillText) pillText.textContent = "Tailor & Autofill";
+      isAutofilling = false;
     }
-
-    if (pillText) pillText.textContent = "Tailor & Autofill";
-    isAutofilling = false;
-
-    const tailNote = tailoredFile ? ` (🎯 Resume Tailored for ${jobDetails.company})` : "";
-    showToast(`Autofilled ${filledCount} fields${tailNote}!`, true);
-
-    return {
-      success: true,
-      count: filledCount,
-      filesUploaded: filesUploaded,
-      tailoredFor: jobDetails.company,
-      jobTitle: jobDetails.title
-    };
   }
 
   // ==========================================
@@ -881,28 +933,40 @@ Return ONLY a valid JSON object (no markdown, no backticks, no markdown code fen
     }
 
     if (request.action === "GET_ACTIVE_JD") {
-      const jd = extractJobDetails();
-      sendResponse(jd);
+      try {
+        const jd = extractJobDetails();
+        sendResponse(jd);
+      } catch (err) {
+        sendResponse({ title: "Software Engineer", company: "Company" });
+      }
       return false;
     }
 
     if (request.action === "GENERATE_TAILORED_PREVIEW") {
       (async () => {
-        const jd = extractJobDetails();
-        const profile = request.profile || (await getProfile());
-        const tailored = await tailorResumeForJob(jd, profile);
-        const blob = buildTailoredPdfBlob(tailored, profile);
+        try {
+          const jd = extractJobDetails();
+          const profile = request.profile || (await getProfile());
+          const tailored = await tailorResumeForJob(jd, profile);
+          const blob = buildTailoredPdfBlob(tailored, profile);
 
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          sendResponse({
-            success: true,
-            jobTitle: jd.title,
-            company: jd.company,
-            dataUrl: reader.result
-          });
-        };
-        reader.readAsDataURL(blob);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const cleanCompany = (jd.company || "Company").replace(/[^a-zA-Z0-9]/g, "_");
+            const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+            sendResponse({
+              success: true,
+              jobTitle: jd.title,
+              company: jd.company,
+              filename: `${cleanName}_Resume_${cleanCompany}.pdf`,
+              dataUrl: reader.result
+            });
+          };
+          reader.readAsDataURL(blob);
+        } catch (err) {
+          console.error("[JobAgent] Preview generation error:", err);
+          sendResponse({ success: false, error: err.message });
+        }
       })();
       return true;
     }

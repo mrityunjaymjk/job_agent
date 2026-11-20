@@ -34,23 +34,51 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
+  // Reliable messaging to active tab with auto-injection on un-refreshed tabs
+  async function sendMessageToActiveTab(msg, callback) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) {
+      return callback({ success: false, error: "No active tab found" });
+    }
+
+    chrome.tabs.sendMessage(tab.id, msg, (response) => {
+      if (chrome.runtime.lastError) {
+        // Tab was opened before extension was reloaded; inject content script dynamically
+        chrome.scripting.executeScript(
+          { target: { tabId: tab.id }, files: ["content.js"] },
+          () => {
+            if (chrome.runtime.lastError) {
+              return callback({ success: false, error: "Please refresh this webpage (F5) once so the extension can connect!" });
+            }
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tab.id, msg, (retryResp) => {
+                if (chrome.runtime.lastError) {
+                  return callback({ success: false, error: "Please refresh this webpage (F5) once so the extension can connect!" });
+                }
+                callback(retryResp);
+              });
+            }, 100);
+          }
+        );
+      } else {
+        callback(response);
+      }
+    });
+  }
+
   // Query Active Tab for Live Job Description
   function refreshActiveTabJD() {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0] && tabs[0].id) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "GET_ACTIVE_JD" }, (res) => {
-          if (chrome.runtime.lastError || !res) {
-            if (detectedJobTitleEl) detectedJobTitleEl.textContent = "General Application";
-            if (detectedCompanyEl) detectedCompanyEl.textContent = "Ready to tailor on any career page";
-            return;
-          }
-          if (detectedJobTitleEl && res.title) {
-            detectedJobTitleEl.textContent = res.title;
-          }
-          if (detectedCompanyEl && res.company) {
-            detectedCompanyEl.textContent = res.company;
-          }
-        });
+    sendMessageToActiveTab({ action: "GET_ACTIVE_JD" }, (res) => {
+      if (!res || !res.title) {
+        if (detectedJobTitleEl) detectedJobTitleEl.textContent = "General Application";
+        if (detectedCompanyEl) detectedCompanyEl.textContent = "Ready to tailor on any career page";
+        return;
+      }
+      if (detectedJobTitleEl && res.title) {
+        detectedJobTitleEl.textContent = res.title;
+      }
+      if (detectedCompanyEl && res.company) {
+        detectedCompanyEl.textContent = res.company;
       }
     });
   }
@@ -273,32 +301,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (previewTailoredBtn) {
     previewTailoredBtn.addEventListener("click", async () => {
       previewTailoredBtn.textContent = "⏳ Generating...";
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.id) {
-        alert("Please open a job application tab to preview tailoring.");
-        previewTailoredBtn.textContent = "👁️ Preview Tailored PDF";
-        return;
-      }
+      currentProfile = collectUI();
 
-      chrome.tabs.sendMessage(
-        tab.id,
-        { action: "GENERATE_TAILORED_PREVIEW", profile: collectUI() },
+      sendMessageToActiveTab(
+        { action: "GENERATE_TAILORED_PREVIEW", profile: currentProfile },
         (res) => {
           previewTailoredBtn.textContent = "👁️ Preview Tailored PDF";
-          if (chrome.runtime.lastError || !res || !res.dataUrl) {
-            alert("Please make sure you are on a webpage with a job description.");
+          if (!res || !res.success || !res.dataUrl) {
+            alert(res?.error || "Please refresh this webpage (F5) once so the extension can read the job description!");
             return;
           }
-          // Open PDF preview in a new window/tab
-          const w = window.open();
-          w.document.write(`
-            <html>
-              <head><title>Tailored Resume Preview - ${res.company}</title></head>
-              <body style="margin:0; background:#1e293b;">
-                <iframe src="${res.dataUrl}" style="border:0; width:100vw; height:100vh;" allowfullscreen></iframe>
-              </body>
-            </html>
-          `);
+
+          // Save to chrome storage and open the built-in preview viewer
+          chrome.storage.local.set(
+            {
+              previewPdfData: res.dataUrl,
+              previewPdfTitle: res.jobTitle || "Job Title",
+              previewPdfCompany: res.company || "Company",
+              previewPdfFilename: res.filename || "Tailored_Resume.pdf"
+            },
+            () => {
+              chrome.tabs.create({ url: chrome.runtime.getURL("preview.html") });
+            }
+          );
         }
       );
     });
@@ -351,37 +376,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentProfile = collectUI();
     chrome.storage.local.set({ jobAgentProfile: currentProfile });
 
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.id) {
-        feedbackEl.textContent = "❌ No active tab found.";
-        feedbackEl.style.color = "#ef4444";
-        return;
-      }
-
-      chrome.tabs.sendMessage(
-        tab.id,
-        { action: "AUTOFILL_FORM", profile: currentProfile },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            feedbackEl.textContent = "⚠️ Please open a job application or refresh page!";
-            feedbackEl.style.color = "#f59e0b";
-            return;
-          }
-          if (response && response.success) {
-            const tailMsg = response.tailoredFor ? ` (🎯 Tailored for ${response.tailoredFor})` : "";
-            feedbackEl.textContent = `🎉 Filled ${response.count} fields${tailMsg}!`;
-            feedbackEl.style.color = "#34d399";
-          } else {
-            feedbackEl.textContent = response?.message || "No matching application fields found.";
-            feedbackEl.style.color = "#94a3b8";
-          }
+    sendMessageToActiveTab(
+      { action: "AUTOFILL_FORM", profile: currentProfile },
+      (response) => {
+        if (!response || !response.success) {
+          feedbackEl.textContent = response?.error || "Please refresh this webpage (F5) once and retry!";
+          feedbackEl.style.color = "#f59e0b";
+          return;
         }
-      );
-    } catch (err) {
-      feedbackEl.textContent = "Error: " + err.message;
-      feedbackEl.style.color = "#ef4444";
-    }
+
+        const tailMsg = response.tailoredFor ? ` (🎯 Tailored for ${response.tailoredFor})` : "";
+        feedbackEl.textContent = `🎉 Filled ${response.count} fields${tailMsg}!`;
+        feedbackEl.style.color = "#34d399";
+      }
+    );
   });
 
   // Initialize
