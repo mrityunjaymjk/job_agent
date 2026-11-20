@@ -150,6 +150,26 @@ def sync_chrome_cache(force: bool = False) -> Dict[str, Any]:
         "message": f"Successfully imported {len(synced_items)} components from your Google Chrome cache!"
     }
 
+def release_browser_profile_processes() -> None:
+    """Safely terminates any orphaned browser processes and removes stale lockfiles on the profile directory."""
+    import subprocess
+    p_dir = get_browser_profile_path()
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*browser_profile*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
+    for lock_name in ["lockfile", "SingletonLock", "SingletonCookie", "SingletonSocket"]:
+        lock_f = p_dir / lock_name
+        if lock_f.exists():
+            try:
+                lock_f.unlink()
+            except Exception:
+                pass
+
 def ensure_cache_seeded() -> None:
     """Auto-seeds cache on first run if profile cookies do not yet exist."""
     p_dir = get_browser_profile_path()
@@ -165,6 +185,7 @@ def open_persistent_browser_manager(target_url: str = "https://www.linkedin.com/
     from playwright.sync_api import sync_playwright
 
     p_dir = get_browser_profile_path()
+    release_browser_profile_processes()
     ensure_cache_seeded()
 
     logs = []
@@ -177,25 +198,40 @@ def open_persistent_browser_manager(target_url: str = "https://www.linkedin.com/
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox"
         ]
-        try:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(p_dir),
-                channel="chrome",
-                headless=False,
-                no_viewport=True,
-                args=launch_args,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="en-US"
-            )
-        except Exception:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(p_dir),
-                headless=False,
-                no_viewport=True,
-                args=launch_args,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="en-US"
-            )
+        context = None
+        for attempt in range(2):
+            try:
+                context = p.chromium.launch_persistent_context(
+                    user_data_dir=str(p_dir),
+                    channel="chrome",
+                    headless=False,
+                    no_viewport=True,
+                    args=launch_args,
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    locale="en-US"
+                )
+                break
+            except Exception:
+                try:
+                    context = p.chromium.launch_persistent_context(
+                        user_data_dir=str(p_dir),
+                        headless=False,
+                        no_viewport=True,
+                        args=launch_args,
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        locale="en-US"
+                    )
+                    break
+                except Exception as e2:
+                    if attempt == 0:
+                        release_browser_profile_processes()
+                        time.sleep(1)
+                    else:
+                        logs.append(f"Could not open browser window: {e2}")
+                        return {"success": False, "logs": logs, "status": get_profile_status()}
+
+        if not context:
+            return {"success": False, "logs": logs, "status": get_profile_status()}
 
         context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {

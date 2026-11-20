@@ -2784,9 +2784,12 @@ elif page == "⚙️ Settings":
             st.write("")
             if st.button("🚀 Open Browser Window", type="primary", width="stretch", help="Opens the persistent browser so you can log in once. Your session will be remembered forever!"):
                 url_to_open = custom_url if ("Custom URL" in target_site and custom_url) else target_site.split("(")[-1].rstrip(")")
-                with st.spinner("Opening browser window on your screen... Feel free to log in!"):
+                with st.spinner("Browser window opened on your screen! Please log in, then CLOSE that browser window when done to save your session..."):
                     res = auto_applicant.open_persistent_browser_manager(target_url=url_to_open, wait_seconds=180)
-                    st.success(f"Browser closed and session saved! {res['status']['total_cookies']} cookies active.")
+                    if res.get("success"):
+                        st.success(f"Browser closed and session saved! {res['status']['total_cookies']} cookies active.")
+                    else:
+                        st.warning(res.get("logs", ["Could not open window"])[-1])
                     st.rerun()
 
         st.divider()
