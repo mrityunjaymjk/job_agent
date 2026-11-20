@@ -43,9 +43,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     chrome.tabs.sendMessage(tab.id, msg, (response) => {
       if (chrome.runtime.lastError) {
-        // Tab was opened before extension was reloaded; inject content script dynamically
+        // Tab was opened before extension was reloaded; inject content script dynamically across all frames
         chrome.scripting.executeScript(
-          { target: { tabId: tab.id }, files: ["content.js"] },
+          { target: { tabId: tab.id, allFrames: true }, files: ["content.js"] },
           () => {
             if (chrome.runtime.lastError) {
               return callback({ success: false, error: "Please refresh this webpage (F5) once so the extension can connect!" });
@@ -77,8 +77,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (detectedJobTitleEl && res.title) {
         detectedJobTitleEl.textContent = res.title;
       }
-      if (detectedCompanyEl && res.company) {
-        detectedCompanyEl.textContent = res.company;
+      if (detectedCompanyEl) {
+        if (!res.hasJd) {
+          detectedCompanyEl.textContent = (res.company && res.company !== "Employer")
+            ? `${res.company} (No JD on page - Using Default Profile)`
+            : "Form Page (No JD on page - Using Default Profile)";
+        } else {
+          detectedCompanyEl.textContent = res.company || "Target Job Description";
+        }
       }
     });
   }
@@ -318,7 +324,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               previewPdfData: res.dataUrl,
               previewPdfTitle: res.jobTitle || "Job Title",
               previewPdfCompany: res.company || "Company",
-              previewPdfFilename: res.filename || "Tailored_Resume.pdf"
+              previewPdfFilename: res.filename || "Tailored_Resume.pdf",
+              previewPdfIsDefault: Boolean(res.isDefault)
             },
             () => {
               chrome.tabs.create({ url: chrome.runtime.getURL("preview.html") });
@@ -370,7 +377,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Autofill Button
   autofillBtn.addEventListener("click", async () => {
-    feedbackEl.textContent = "🎯 Tailoring resume to JD & filling...";
+    feedbackEl.textContent = "🎯 Preparing autofill...";
     feedbackEl.style.color = "#818cf8";
 
     currentProfile = collectUI();
@@ -385,7 +392,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
 
-        const tailMsg = response.tailoredFor ? ` (🎯 Tailored for ${response.tailoredFor})` : "";
+        let tailMsg = "";
+        if (response.isDefault || response.tailoredFor === "Default Profile") {
+          tailMsg = " (🎯 Default Profile Resume)";
+        } else if (response.tailoredFor && response.tailoredFor !== "Employer") {
+          tailMsg = ` (🎯 Tailored for ${response.tailoredFor})`;
+        }
         feedbackEl.textContent = `🎉 Filled ${response.count} fields${tailMsg}!`;
         feedbackEl.style.color = "#34d399";
       }

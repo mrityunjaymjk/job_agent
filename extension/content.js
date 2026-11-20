@@ -23,6 +23,21 @@
 
   let isAutofilling = false;
 
+  // Known ATS vendors that should NEVER be used as genuine company names
+  const ATS_VENDORS = [
+    "smartrecruiters", "greenhouse", "lever", "myworkdayjobs", "workday",
+    "ashbyhq", "ashby", "jobvite", "bamboohr", "taleo", "icims", "workable",
+    "jazzhr", "recruitee", "rippling", "phenompeople", "brassring",
+    "successfactors", "adp", "bullhorn", "paylocity", "cornerstone",
+    "ultipro", "clearcompany", "breezy", "pinpointhq", "hireology", "applicantlist"
+  ];
+
+  function isAtsVendor(name) {
+    if (!name) return false;
+    const clean = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return ATS_VENDORS.some(ats => clean.includes(ats));
+  }
+
   // Safe check for valid Chrome extension context (avoids 'Extension context invalidated' error on reloaded extensions)
   function isContextValid() {
     try {
@@ -33,6 +48,43 @@
     } catch (e) {
       return false;
     }
+  }
+
+  // Deep query selector that pierces Shadow DOM boundaries (open shadowRoots) and accessible iframes
+  function querySelectorAllDeep(selector, root = document) {
+    const results = [];
+    const visited = new Set();
+
+    function search(node) {
+      if (!node || visited.has(node)) return;
+      visited.add(node);
+
+      try {
+        if (node.querySelectorAll) {
+          const matched = node.querySelectorAll(selector);
+          for (let i = 0; i < matched.length; i++) {
+            results.push(matched[i]);
+          }
+
+          const all = node.querySelectorAll("*");
+          for (let i = 0; i < all.length; i++) {
+            const el = all[i];
+            if (el.shadowRoot) {
+              search(el.shadowRoot);
+            }
+            if (el.tagName === "IFRAME") {
+              try {
+                const doc = el.contentDocument || el.contentWindow?.document;
+                if (doc) search(doc);
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    search(root);
+    return results;
   }
 
   // Retrieve stored profile from chrome storage
@@ -114,17 +166,23 @@
     });
   }
 
-  // React/Angular/Vue compatible native value setter
+  // React/Angular/Vue compatible native value setter with Shadow DOM event composition
   function setNativeValue(element, value) {
     if (!element || value === undefined || value === null) return false;
-    const strVal = String(value);
+    const strVal = String(value).trim();
+    if (!strVal) return false;
 
-    if (element.value === strVal && strVal !== "") return false;
+    if (element.value === strVal) return false;
 
     try {
       const isTextarea = element.tagName.toLowerCase() === "textarea";
       const proto = isTextarea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+
+      // Reset React synthetic event value tracker
+      if (element._valueTracker) {
+        element._valueTracker.setValue("");
+      }
 
       if (setter) {
         setter.call(element, strVal);
@@ -132,9 +190,9 @@
         element.value = strVal;
       }
 
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-      element.dispatchEvent(new Event("blur", { bubbles: true }));
+      element.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      element.dispatchEvent(new Event("blur", { bubbles: true, composed: true }));
 
       element.classList.add("jobagent-highlight");
       return true;
@@ -150,7 +208,7 @@
     }
   }
 
-  // Extract contextual signature from an element
+  // Extract contextual signature from an element across Shadow DOM, wrappers, containers, and siblings
   function getElementSignature(el) {
     const parts = [
       el.getAttribute("name") || "",
@@ -159,22 +217,72 @@
       el.getAttribute("autocomplete") || "",
       el.getAttribute("aria-label") || "",
       el.getAttribute("data-automation-id") || "",
-      el.getAttribute("data-test") || ""
+      el.getAttribute("data-test") || "",
+      el.getAttribute("data-testid") || "",
+      el.getAttribute("data-qa") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("type") || ""
     ];
 
-    if (el.id) {
-      const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label) parts.push(label.innerText);
+    // Check aria-labelledby
+    const labelledBy = el.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      const rootNode = el.getRootNode?.() || document;
+      const lblEl = (rootNode.getElementById ? rootNode.getElementById(labelledBy) : null) || document.getElementById(labelledBy);
+      if (lblEl) parts.push(lblEl.innerText || lblEl.textContent || "");
     }
 
-    const parentLabel = el.closest("label");
-    if (parentLabel) parts.push(parentLabel.innerText);
+    // Check explicit <label for="id">
+    if (el.id) {
+      const rootNode = el.getRootNode?.() || document;
+      const lbl = rootNode.querySelector ? rootNode.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
+      if (lbl) parts.push(lbl.innerText || lbl.textContent || "");
+    }
 
-    // Immediate parent text (limit to 120 chars so we don't leak global form container labels)
-    const container = el.closest(".form-group, .field, [class*='formRow'], [class*='field'], tr, p");
-    if (container) {
-      const text = container.innerText || "";
-      if (text.length < 120) parts.push(text);
+    // Check wrapping <label>
+    const parentLabel = el.closest ? el.closest("label") : null;
+    if (parentLabel) parts.push(parentLabel.innerText || parentLabel.textContent || "");
+
+    // Check Shadow Host if inside Shadow DOM (e.g. SmartRecruiters <spl-input>)
+    const rootNode = el.getRootNode ? el.getRootNode() : null;
+    if (rootNode && rootNode.host) {
+      const host = rootNode.host;
+      parts.push(
+        host.getAttribute("label") || "",
+        host.getAttribute("name") || "",
+        host.getAttribute("data-test") || "",
+        host.getAttribute("data-automation-id") || "",
+        host.getAttribute("placeholder") || "",
+        host.getAttribute("aria-label") || ""
+      );
+      const hostLabel = host.querySelector ? host.querySelector("label, .label, [class*='label']") : null;
+      if (hostLabel) parts.push(hostLabel.innerText || hostLabel.textContent || "");
+    }
+
+    // Check preceding siblings (e.g. <label>First name*</label><input>)
+    if (el.previousElementSibling) {
+      const prevText = (el.previousElementSibling.innerText || el.previousElementSibling.textContent || "").trim();
+      if (prevText.length < 100) parts.push(prevText);
+    }
+    if (el.parentElement?.previousElementSibling) {
+      const prevParentText = (el.parentElement.previousElementSibling.innerText || el.parentElement.previousElementSibling.textContent || "").trim();
+      if (prevParentText.length < 100) parts.push(prevParentText);
+    }
+
+    // Check parent containers (up to 4 levels) for child label and concise text
+    let curr = el.parentElement;
+    for (let i = 0; i < 4 && curr; i++) {
+      const lbl = curr.querySelector ? curr.querySelector("label, .label, [class*='label'], [class*='title'], [class*='header']") : null;
+      if (lbl && lbl !== el && !lbl.contains(el)) {
+        const lblText = (lbl.innerText || lbl.textContent || "").trim();
+        if (lblText.length < 120) parts.push(lblText);
+        break;
+      }
+      const cText = (curr.innerText || curr.textContent || "").trim();
+      if (cText && cText.length < 100) {
+        parts.push(cText);
+      }
+      curr = curr.parentElement;
     }
 
     return parts.join(" ").toLowerCase();
@@ -191,11 +299,11 @@
 
     if (commonATS.some(ats => url.includes(ats))) return true;
 
-    const inputs = document.querySelectorAll("input:not([type='hidden'])");
+    const inputs = querySelectorAllDeep("input:not([type='hidden'])");
     let matches = 0;
     for (const inp of inputs) {
       const sig = getElementSignature(inp);
-      if (sig.includes("email") || sig.includes("resume") || sig.includes("phone") || sig.includes("linkedin")) {
+      if (sig.includes("email") || sig.includes("resume") || sig.includes("phone") || sig.includes("linkedin") || sig.includes("first name")) {
         matches++;
       }
     }
@@ -215,7 +323,7 @@
       "h1.app-title", "#header h1", ".posting-headline h2", ".main-header h2",
       "[data-automation-id='jobPostingHeader']", ".job-details-jobs-unified-top-card__job-title",
       ".jobs-unified-top-card__job-title", "h1.jobsearch-JobInfoHeader-title",
-      ".ashby-job-posting-heading", "h1", "h2[class*='title']", "h2"
+      ".ashby-job-posting-heading", "[data-test='job-title']", "h1", "h2[class*='title']", "h2"
     ];
 
     for (const sel of titleSelectors) {
@@ -237,33 +345,93 @@
     }
 
     // 2. Company Name
-    const companySelectors = [
-      ".company-name", "[data-automation-id='companyName']",
-      ".jobsearch-JobInfoHeader-companyName", ".topcard__flavor--black-link",
-      "[class*='company']", "[data-test='company-name']"
+    // A. Check logo images first (alt / title attribute)
+    const logoSelectors = [
+      "img[class*='logo']", "header img", ".company-logo img", ".branding-logo img",
+      "img[alt*='logo' i]", "img[alt*='company' i]", "[data-test='company-logo']",
+      "[data-automation-id='companyLogo'] img", ".app-header img"
     ];
-
-    for (const sel of companySelectors) {
-      const el = document.querySelector(sel);
-      if (el && el.innerText.trim().length > 1) {
-        company = el.innerText.trim();
-        break;
+    for (const sel of logoSelectors) {
+      const img = document.querySelector(sel);
+      if (img) {
+        const alt = (img.getAttribute("alt") || img.getAttribute("title") || "").replace(/logo/i, "").trim();
+        if (alt && alt.length >= 2 && !isAtsVendor(alt)) {
+          company = alt;
+          break;
+        }
       }
     }
 
+    // B. Check standard company element selectors
     if (!company) {
-      const host = window.location.hostname;
-      const parts = host.split(".");
-      if (parts.length >= 2) {
-        // e.g. automationedge.com -> AutomationEdge
-        let domainBase = parts[parts.length - 2];
-        if (["co", "com", "org", "net"].includes(domainBase) && parts.length >= 3) {
-          domainBase = parts[parts.length - 3];
+      const companySelectors = [
+        ".company-name", "[data-automation-id='companyName']",
+        ".jobsearch-JobInfoHeader-companyName", ".topcard__flavor--black-link",
+        "[class*='company']", "[data-test='company-name']",
+        ".job-details-jobs-unified-top-card__company-name",
+        "a[href*='/company/']", "span[class*='employer']"
+      ];
+
+      for (const sel of companySelectors) {
+        const el = document.querySelector(sel);
+        if (el && el.innerText.trim().length > 1) {
+          const txt = el.innerText.trim();
+          if (!isAtsVendor(txt) && !txt.toLowerCase().includes("careers") && !txt.toLowerCase().includes("jobs")) {
+            company = txt;
+            break;
+          }
         }
-        company = domainBase.charAt(0).toUpperCase() + domainBase.slice(1);
-      } else {
-        company = "Target Company";
       }
+    }
+
+    // C. Extract from URL pathname or subdomain (avoiding ATS vendor names)
+    if (!company || isAtsVendor(company)) {
+      const host = window.location.hostname.toLowerCase();
+      const path = window.location.pathname;
+
+      // SmartRecruiters: jobs.smartrecruiters.com/<company_slug>/... or /company/<slug>
+      if (host.includes("smartrecruiters.com")) {
+        const m = path.match(/\/(?:company\/)?([a-zA-Z0-9_-]+)/);
+        if (m && m[1] && !["apply", "jobs", "careers", "all", "search", "details"].includes(m[1].toLowerCase())) {
+          company = m[1].replace(/([A-Z])/g, " $1").replace(/[_-]+/g, " ").trim();
+        }
+      }
+      // Workday: <company>.myworkdayjobs.com
+      else if (host.includes("myworkdayjobs.com")) {
+        const sub = host.split(".")[0];
+        if (sub && sub !== "www") {
+          company = sub.replace(/[-_]+/g, " ");
+        }
+      }
+      // Greenhouse: boards.greenhouse.io/<company>
+      else if (host.includes("greenhouse.io")) {
+        const m = path.match(/\/([a-zA-Z0-9_-]+)/);
+        if (m && m[1] && !["embed", "jobs"].includes(m[1].toLowerCase())) {
+          company = m[1].replace(/[-_]+/g, " ");
+        }
+      }
+      // Lever: jobs.lever.co/<company>
+      else if (host.includes("lever.co")) {
+        const m = path.match(/\/([a-zA-Z0-9_-]+)/);
+        if (m && m[1]) company = m[1].replace(/[-_]+/g, " ");
+      }
+      // General hostname domain fallback (only if NOT an ATS vendor)
+      else {
+        const parts = host.split(".");
+        if (parts.length >= 2) {
+          let domainBase = parts[parts.length - 2];
+          if (["co", "com", "org", "net"].includes(domainBase) && parts.length >= 3) {
+            domainBase = parts[parts.length - 3];
+          }
+          if (!isAtsVendor(domainBase)) {
+            company = domainBase.charAt(0).toUpperCase() + domainBase.slice(1);
+          }
+        }
+      }
+    }
+
+    if (!company || isAtsVendor(company)) {
+      company = "Employer";
     }
 
     // 3. Job Description Text
@@ -292,13 +460,98 @@
     };
   }
 
+  // Detect whether the page has a genuine, substantive Job Description or is a direct application form
+  function hasGenuineJobDescription(description, title = "") {
+    if (!description || typeof description !== "string") return false;
+    const cleanDesc = description.trim();
+    if (cleanDesc.length < 150) return false;
+
+    const lower = cleanDesc.toLowerCase();
+
+    // Check for application form boilerplate indicators
+    const formKeywords = [
+      "first name", "last name", "confirm your email", "confirm email",
+      "choose an option to autocomplete", "fields marked with * are required",
+      "choose a file or drop it here", "upload resume", "drag and drop",
+      "phone number", "personal information", "apply with indeed",
+      "attach resume", "browse file", "submit application", "easy apply"
+    ];
+
+    let formKeywordCount = 0;
+    for (const kw of formKeywords) {
+      if (lower.includes(kw)) formKeywordCount++;
+    }
+
+    // Check for substantive Job Description indicators
+    const jdKeywords = [
+      "responsibilities", "key responsibilities", "job responsibilities",
+      "requirements", "basic requirements", "minimum requirements", "required skills",
+      "qualifications", "minimum qualifications", "preferred qualifications",
+      "what you will do", "what you'll do", "about the role", "about the job",
+      "who you are", "role overview", "job overview", "we are looking for",
+      "ideal candidate", "years of experience in", "bachelor's degree",
+      "master's degree", "technical requirements", "skills required"
+    ];
+
+    let jdKeywordCount = 0;
+    for (const kw of jdKeywords) {
+      if (lower.includes(kw)) jdKeywordCount++;
+    }
+
+    // If it has multiple form field labels and no substantive JD sections, it's an application form!
+    if (formKeywordCount >= 3 && jdKeywordCount === 0) {
+      return false;
+    }
+
+    // If it has at least 1 strong JD section header and sufficient length (> 200 chars), it's a genuine JD
+    if (jdKeywordCount >= 1 && cleanDesc.length >= 200) {
+      return true;
+    }
+
+    // If form field count is significant compared to JD terms
+    if (formKeywordCount >= 2 && jdKeywordCount < 2) {
+      return false;
+    }
+
+    return cleanDesc.length >= 350;
+  }
+
   // ==========================================
   // 2. GEMINI AI RESUME TAILORING ENGINE
   // ==========================================
-  async function tailorResumeForJob(jobDetails, profile) {
+  async function tailorResumeForJob(jobDetails, profile, hasJd = true) {
+    const defaultTitle = profile.current_title || "Backend Developer";
     const candSkills = Array.isArray(profile.skills) && profile.skills.length
       ? profile.skills
       : ["Java", "Spring Boot", "REST APIs", "MySQL", "React", "Python", "SQL", "Git", "Docker"];
+
+    // When on a form without a genuine JD, fall back cleanly to default profile!
+    if (!hasJd) {
+      console.log("[JobAgent] No genuine JD found on page. Utilizing default profile resume.");
+      const cleanCompany = (jobDetails.company && !isAtsVendor(jobDetails.company) && jobDetails.company !== "Employer") ? jobDetails.company : "";
+      const headline = `${defaultTitle} - ${candSkills.slice(0, 4).join(", ")}`;
+      const summary = `Results-driven ${defaultTitle} with ${profile.years_exp || "1+ years"} of experience engineering high-performance RESTful APIs, database architectures, and scalable microservices with Java, Spring Boot, and MySQL. Proven track record of clean code standards, JPA/MySQL optimization, and reliable system design.`;
+
+      const defaultBullets = [
+        "Architected and optimized Java Spring Boot REST APIs using Controller-Service-Repository patterns, JPA, and MySQL.",
+        "Built and secured merchant workflows with JWT authentication, asynchronous processing, and third-party integrations.",
+        "Engineered database schemas and complex queries to support high-reliability transaction processing with zero downtime."
+      ];
+
+      const defaultCoverLetter = `Dear Hiring Team${cleanCompany ? " at " + cleanCompany : ""},\n\nI am writing to express my strong interest in the ${jobDetails.title && !jobDetails.title.toLowerCase().includes("apply") ? jobDetails.title : defaultTitle} position. With hands-on experience in backend development, Java Spring Boot, and database architecture, I am eager to contribute immediately to your team's engineering goals.\n\nSincerely,\n${profile.name}`;
+
+      return {
+        is_default: true,
+        title: jobDetails.title && !jobDetails.title.toLowerCase().includes("apply") ? cleanText(jobDetails.title) : defaultTitle,
+        company: cleanCompany ? cleanText(cleanCompany) : "",
+        headline: cleanText(headline),
+        summary: cleanText(summary),
+        prioritized_skills: candSkills.map(cleanText),
+        tailored_bullets: defaultBullets.map(cleanText),
+        cover_letter: defaultCoverLetter
+      };
+    }
+
     const jobText = (jobDetails.title + " " + jobDetails.description).toLowerCase();
 
     // Match candidate skills with JD keywords
@@ -662,16 +915,23 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
       dataTransfer.items.add(fileToAttach);
       fileInput.files = dataTransfer.files;
 
-      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-      fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+      fileInput.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+      fileInput.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       fileInput.classList.add("jobagent-highlight");
 
-      // Visually update nearby filename displays (e.g. WordPress Contact Form 7, custom dropzones)
-      const container = fileInput.closest(".wpcf7-form-control-wrap, .form-group, div, label");
+      // Visually update nearby filename displays (e.g. SmartRecruiters dropzone, WordPress, custom file uploaders)
+      const container = fileInput.closest(".wpcf7-form-control-wrap, .form-group, div, label, [class*='dropzone'], [class*='upload'], spl-dropzone");
       if (container) {
         container.classList.add("jobagent-highlight");
-        const nameBadge = container.querySelector(".file-name, .custom-file-label, .file-upload-status");
-        if (nameBadge) nameBadge.textContent = fileToAttach.name;
+        const nameBadge = container.querySelector(".file-name, .custom-file-label, .file-upload-status, [class*='filename'], [class*='name']");
+        if (nameBadge) {
+          nameBadge.textContent = fileToAttach.name;
+        } else {
+          const helper = container.querySelector("p, span, [class*='description'], [class*='text']");
+          if (helper && helper.innerText.toLowerCase().includes("drop")) {
+            helper.innerHTML = `✅ Attached: <strong>${fileToAttach.name}</strong>`;
+          }
+        }
       }
 
       return true;
@@ -751,19 +1011,41 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         return { success: false, message: "Profile not found" };
       }
 
-      // 1. Scrape Job Description from Active Page
+      // 1. Scrape Job Description & Company from Active Page
       const jobDetails = extractJobDetails();
+      const hasJd = hasGenuineJobDescription(jobDetails.description, jobDetails.title);
       let tailoredData = null;
       let tailoredFile = null;
 
-      if (jobDetails.title && profile.enable_tailored_resume !== false) {
-        if (pillText) pillText.textContent = `Tailoring for ${jobDetails.company.slice(0, 10)}...`;
-        tailoredData = await tailorResumeForJob(jobDetails, profile);
-        const pdfBlob = buildTailoredPdfBlob(tailoredData, profile);
-        const cleanCompany = (jobDetails.company || "Employer").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 20);
-        const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
-        const filename = `${cleanName}_Resume_${cleanCompany}.pdf`;
-        tailoredFile = new File([pdfBlob], filename, { type: "application/pdf", lastModified: Date.now() });
+      if (profile.enable_tailored_resume !== false) {
+        if (hasJd) {
+          if (pillText) pillText.textContent = `Tailoring for ${jobDetails.company.slice(0, 10)}...`;
+          tailoredData = await tailorResumeForJob(jobDetails, profile, true);
+          const pdfBlob = buildTailoredPdfBlob(tailoredData, profile);
+          const cleanCompany = (jobDetails.company || "Company").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 20);
+          const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+          const filename = `${cleanName}_Resume_${cleanCompany}.pdf`;
+          tailoredFile = new File([pdfBlob], filename, { type: "application/pdf", lastModified: Date.now() });
+        } else {
+          // Direct form without rich JD: fall back cleanly to candidate's default profile!
+          tailoredData = await tailorResumeForJob(jobDetails, profile, false);
+
+          if (profile.resume_base64) {
+            // Use candidate's pre-loaded default resume PDF directly
+            const mime = profile.resume_mime || "application/pdf";
+            const filename = profile.resume_filename || "Mrityunjay_Kumar_Resume.pdf";
+            const blob = base64ToBlob(profile.resume_base64, mime);
+            if (blob) {
+              tailoredFile = new File([blob], filename, { type: mime, lastModified: Date.now() });
+            }
+          } else {
+            // Compile default clean ATS PDF without ATS vendor suffix
+            const pdfBlob = buildTailoredPdfBlob(tailoredData, profile);
+            const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+            const filename = `${cleanName}_Resume.pdf`;
+            tailoredFile = new File([pdfBlob], filename, { type: "application/pdf", lastModified: Date.now() });
+          }
+        }
       }
 
       if (pillText) pillText.textContent = "Autofilling...";
@@ -771,14 +1053,17 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
       let filledCount = 0;
       let filesUploaded = 0;
 
-      // 2. Resume File Inputs (<input type="file">)
-      const fileInputs = document.querySelectorAll("input[type='file']");
+      // 2. Resume File Inputs (<input type="file">) across light DOM and open Shadow DOM
+      const fileInputs = querySelectorAllDeep("input[type='file']");
       for (const fi of fileInputs) {
         const sig = getElementSignature(fi);
-        if (
+        const isResume =
           sig.includes("resume") || sig.includes("cv") || sig.includes("curriculum") ||
-          sig.includes("upload") || sig.includes("attachment") || sig.includes("document") || fileInputs.length === 1
-        ) {
+          sig.includes("upload") || sig.includes("attachment") || sig.includes("document") ||
+          sig.includes("choose a file") || sig.includes("drop it here") || sig.includes("drop file") ||
+          sig.includes("file") || fileInputs.length === 1;
+
+        if (isResume) {
           if (attachResumeFile(fi, profile, tailoredFile)) {
             filesUploaded++;
             filledCount++;
@@ -786,8 +1071,8 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
       }
 
-      // 3. Text Inputs & Textareas
-      const textElements = document.querySelectorAll(
+      // 3. Text Inputs & Textareas across light DOM and open Shadow DOM
+      const textElements = querySelectorAllDeep(
         "input:not([type='hidden']):not([type='radio']):not([type='checkbox']):not([type='file']):not([type='submit']):not([type='button']), textarea"
       );
 
@@ -798,32 +1083,57 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
 
         // First Name
         if (
-          (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") || sig.includes("first_name")) &&
+          (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") ||
+           sig.includes("first_name") || sig.includes("given-name") || sig.includes("first-name") ||
+           directSig.includes("firstname") || directSig.includes("first_name")) &&
           !sig.includes("last")
         ) {
           if (setNativeValue(el, profile.first_name || profile.name.split(" ")[0])) filledCount++;
         }
         // Last Name
-        else if (sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") || sig.includes("surname") || sig.includes("last_name")) {
+        else if (
+          sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") ||
+          sig.includes("surname") || sig.includes("last_name") || sig.includes("family-name") ||
+          sig.includes("last-name") || directSig.includes("lastname") || directSig.includes("last_name")
+        ) {
           const parts = profile.name.split(" ");
           const lastName = profile.last_name || (parts.length > 1 ? parts.slice(1).join(" ") : "");
           if (setNativeValue(el, lastName)) filledCount++;
         }
         // Full Name (Matches "Name *", "Full Name", "Your Name", etc.)
         else if (
-          /\b(name|full\s*name|your\s*name|candidate\s*name|applicant\s*name)\b/i.test(sig) &&
-          !sig.includes("first") && !sig.includes("last") && !sig.includes("company") &&
-          !sig.includes("school") && !sig.includes("user")
+          (/\b(full\s*name|candidate\s*name|applicant\s*name|your\s*name)\b/i.test(sig) ||
+           (/\bname\b/i.test(sig) && !sig.includes("first") && !sig.includes("last") &&
+            !sig.includes("company") && !sig.includes("user") && !sig.includes("school") &&
+            !sig.includes("file") && !sig.includes("drop")))
         ) {
           if (setNativeValue(el, profile.name)) filledCount++;
+        }
+        // Confirm Email (check before generic email)
+        else if (
+          sig.includes("confirm your email") || sig.includes("confirm email") ||
+          sig.includes("confirm_email") || sig.includes("email confirmation") ||
+          sig.includes("re-enter email") || sig.includes("repeat email") || sig.includes("verify email")
+        ) {
+          if (setNativeValue(el, profile.email)) filledCount++;
         }
         // Email
         else if (el.type === "email" || sig.includes("email") || sig.includes("e-mail")) {
           if (setNativeValue(el, profile.email)) filledCount++;
         }
         // Phone
-        else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell")) {
-          if (setNativeValue(el, profile.phone)) filledCount++;
+        else if (el.type === "tel" || sig.includes("phone") || sig.includes("mobile") || sig.includes("cell") || sig.includes("contact number")) {
+          const containerText = el.parentElement?.innerText || el.closest(".form-group, div, [class*='phone'], [class*='input']")?.innerText || "";
+          let phoneToFill = profile.phone || "+91-7972379015";
+          if (containerText.includes("+91") || containerText.includes("+1") || containerText.includes("flag")) {
+            phoneToFill = phoneToFill.replace(/^\+?\d{1,3}[-\s]?/, "");
+          }
+          if (setNativeValue(el, phoneToFill)) filledCount++;
+        }
+        // City (check before general location/address)
+        else if ((sig.includes("city") || sig.includes("current city")) && !sig.includes("state") && !sig.includes("country")) {
+          const loc = profile.city || (profile.location ? profile.location.split(",")[0].trim() : "Pune");
+          if (setNativeValue(el, loc)) filledCount++;
         }
         // Technical Skills / Skill Sets (e.g. "Skill Sets *", "Technical Skills", "Technologies")
         else if (
@@ -845,9 +1155,9 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           const summaryVal = tailoredData?.summary || profile.experience || profile.resume_raw_text;
           if (setNativeValue(el, summaryVal)) filledCount++;
         }
-        // Location / City / Address
-        else if (sig.includes("city") || sig.includes("location") || sig.includes("current city") || sig.includes("address")) {
-          const loc = sig.includes("city") ? profile.city : (profile.location || profile.city);
+        // Location / Address
+        else if (sig.includes("location") || sig.includes("current location") || sig.includes("address")) {
+          const loc = profile.location || profile.city;
           if (setNativeValue(el, loc)) filledCount++;
         }
         // Country
@@ -935,9 +1245,9 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         // Cover Letter & Open-Ended Textarea
         else if (isTextarea || el.clientHeight > 50) {
           if (sig.includes("cover letter")) {
-            const letter = tailoredData?.cover_letter || `Dear Hiring Team at ${jobDetails.company},\n\nI am writing to express my strong interest in the ${jobDetails.title} role. With hands-on experience in Java Spring Boot and backend engineering, I am excited about the opportunity to contribute to your engineering goals.\n\nSincerely,\n${profile.name}`;
+            const letter = tailoredData?.cover_letter || `Dear Hiring Team,\n\nI am writing to express my strong interest in this position. With hands-on experience in Java Spring Boot and backend engineering, I am excited about the opportunity to contribute to your engineering goals.\n\nSincerely,\n${profile.name}`;
             if (setNativeValue(el, letter)) filledCount++;
-          } else if (profile.enable_ai_answers && profile.gemini_api_key && !el.value) {
+          } else if (profile.enable_ai_answers && profile.gemini_api_key && !el.value && hasJd) {
             const label = el.closest(".form-group, .field, div")?.innerText || sig;
             const prompt = `Answer this job application question for a Java/Backend candidate named ${profile.name} applying for ${jobDetails.title} at ${jobDetails.company}. Question: "${label.slice(0, 200)}". Keep it 2-3 sentences, direct, first person.`;
             const aiAnswer = await callGeminiApi(prompt, profile);
@@ -946,8 +1256,8 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
       }
 
-      // 4. Radio Buttons (Work Auth, Sponsorship, etc.)
-      const radios = document.querySelectorAll("input[type='radio']");
+      // 4. Radio Buttons (Work Auth, Sponsorship, etc.) across light DOM and open Shadow DOM
+      const radios = querySelectorAllDeep("input[type='radio']");
       for (const r of radios) {
         const sig = getElementSignature(r);
         const val = (r.value || "").toLowerCase();
@@ -961,7 +1271,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             if (!r.checked) {
               r.click();
               r.checked = true;
-              r.dispatchEvent(new Event("change", { bubbles: true }));
+              r.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
               filledCount++;
             }
           }
@@ -976,7 +1286,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             if (!r.checked) {
               r.click();
               r.checked = true;
-              r.dispatchEvent(new Event("change", { bubbles: true }));
+              r.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
               filledCount++;
             }
           }
@@ -988,15 +1298,15 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             if (!r.checked) {
               r.click();
               r.checked = true;
-              r.dispatchEvent(new Event("change", { bubbles: true }));
+              r.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
               filledCount++;
             }
           }
         }
       }
 
-      // 5. Select Dropdowns (Country, Experience, Gender, etc.)
-      const selects = document.querySelectorAll("select");
+      // 5. Select Dropdowns (Country, Experience, Gender, etc.) across light DOM and open Shadow DOM
+      const selects = querySelectorAllDeep("select");
       for (const sel of selects) {
         const sig = getElementSignature(sel);
         let targetText = null;
@@ -1021,7 +1331,7 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             if (opt.text.toLowerCase().includes(targetText.toLowerCase()) || opt.value.toLowerCase().includes(targetText.toLowerCase())) {
               if (sel.selectedIndex !== i) {
                 sel.selectedIndex = i;
-                sel.dispatchEvent(new Event("change", { bubbles: true }));
+                sel.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
                 sel.classList.add("jobagent-highlight");
                 filledCount++;
               }
@@ -1031,8 +1341,8 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
       }
 
-      // 6. Checkboxes (Terms, consent)
-      const checkboxes = document.querySelectorAll("input[type='checkbox']");
+      // 6. Checkboxes (Terms, consent) across light DOM and open Shadow DOM
+      const checkboxes = querySelectorAllDeep("input[type='checkbox']");
       for (const cb of checkboxes) {
         const sig = getElementSignature(cb);
         if (
@@ -1042,20 +1352,28 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           if (!cb.checked) {
             cb.click();
             cb.checked = true;
-            cb.dispatchEvent(new Event("change", { bubbles: true }));
+            cb.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
             filledCount++;
           }
         }
       }
 
-      const tailNote = tailoredFile ? ` (🎯 Resume Tailored for ${jobDetails.company})` : "";
-      showToast(`Autofilled ${filledCount} fields${tailNote}!`, true);
+      let statusMsg = "";
+      if (tailoredData?.is_default) {
+        statusMsg = " (🎯 Loaded Default Profile Resume)";
+      } else if (tailoredFile && jobDetails.company && !isAtsVendor(jobDetails.company) && jobDetails.company !== "Employer") {
+        statusMsg = ` (🎯 Resume Tailored for ${jobDetails.company})`;
+      } else if (tailoredFile) {
+        statusMsg = " (🎯 Resume Tailored for Role)";
+      }
+      showToast(`Autofilled ${filledCount} fields${statusMsg}!`, true);
 
       return {
         success: true,
         count: filledCount,
         filesUploaded: filesUploaded,
-        tailoredFor: jobDetails.company,
+        tailoredFor: tailoredData?.is_default ? "Default Profile" : (jobDetails.company !== "Employer" ? jobDetails.company : ""),
+        isDefault: Boolean(tailoredData?.is_default),
         jobTitle: jobDetails.title
       };
     } catch (err) {
@@ -1090,9 +1408,13 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         if (request.action === "GET_ACTIVE_JD") {
           try {
             const jd = extractJobDetails();
-            sendResponse(jd);
+            const hasJd = hasGenuineJobDescription(jd.description, jd.title);
+            sendResponse({
+              ...jd,
+              hasJd: hasJd
+            });
           } catch (err) {
-            sendResponse({ title: "Software Engineer", company: "Company" });
+            sendResponse({ title: "Software Engineer", company: "Company", hasJd: false });
           }
           return false;
         }
@@ -1102,20 +1424,25 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             try {
               const jd = extractJobDetails();
               const profile = request.profile || (await getProfile());
-              const tailored = await tailorResumeForJob(jd, profile);
+              const hasJd = hasGenuineJobDescription(jd.description, jd.title);
+              const tailored = await tailorResumeForJob(jd, profile, hasJd);
               const blob = buildTailoredPdfBlob(tailored, profile);
 
               const reader = new FileReader();
               reader.onloadend = () => {
-                const cleanCompany = (jd.company || "Company").replace(/[^a-zA-Z0-9]/g, "_");
                 const cleanName = (profile.name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+                const filename = tailored.is_default
+                  ? `${cleanName}_Resume.pdf`
+                  : `${cleanName}_Resume_${(jd.company || "Company").replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+
                 if (isContextValid()) {
                   try {
                     sendResponse({
                       success: true,
-                      jobTitle: jd.title,
-                      company: jd.company,
-                      filename: `${cleanName}_Resume_${cleanCompany}.pdf`,
+                      jobTitle: tailored.is_default ? (profile.current_title || "Backend Developer") : jd.title,
+                      company: tailored.is_default ? "Default Profile" : jd.company,
+                      isDefault: Boolean(tailored.is_default),
+                      filename: filename,
                       dataUrl: reader.result
                     });
                   } catch (e) {}

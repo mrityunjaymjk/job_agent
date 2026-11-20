@@ -19,6 +19,7 @@ Thumbs.db
 
 # Runtime data, browser state, logs and temporary files
 browser_profile/
+scratch/
 job_agent.db
 *.db
 *.sqlite
