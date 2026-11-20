@@ -47,6 +47,6 @@ Whenever you update your resume or settings in the Streamlit app:
 - Open the Streamlit app `Settings` tab and click **"🔄 Sync Database to Extension"**.
 - Or run the sync script from terminal:
   ```bash
-  python extension/sync_profile.py
+  python sync_extension.py
   ```
 - In the Chrome extension popup, click **"🔄 Reload Defaults"**.

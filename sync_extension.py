@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import db
@@ -52,7 +52,7 @@ def sync_profile() -> dict:
         "eeo_disability": "No, I do not have a disability"
     }
 
-    out_file = Path(__file__).resolve().parent / "profile_data.json"
+    out_file = Path(__file__).resolve().parent / "extension" / "profile_data.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(profile, f, indent=2)
 

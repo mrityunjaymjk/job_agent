@@ -2824,7 +2824,7 @@ elif page == "⚙️ Settings":
             st.write("")
             st.write("")
             if st.button("🔄 Sync Database to Extension", type="primary", width="stretch", help="Sync active resume, profile preferences, and Gemini API key to the Chrome Extension."):
-                from extension.sync_profile import sync_profile
+                from sync_extension import sync_profile
                 synced_p = sync_profile()
                 st.success(f"✅ Successfully synced profile ({synced_p['name']}) to Chrome Extension!")
                 st.rerun()
