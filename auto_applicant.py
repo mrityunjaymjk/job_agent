@@ -272,9 +272,24 @@ def get_resumes_dir() -> Path:
     return RESUMES_DIR
 
 def _clean_for_pdf(text: str) -> str:
-    """Replaces non-latin1 unicode characters with clean standard equivalents."""
+    """Replaces non-latin1 unicode characters and mojibake with clean standard equivalents."""
     if not text:
         return ""
+    mojibake = {
+        'â€¢': '-',
+        'â¢': '',
+        'â€“': '-',
+        'â€”': '--',
+        'â€™': "'",
+        'â€˜': "'",
+        'â€œ': '"',
+        'â€\x9d': '"',
+        'â€': '"',
+        'â': ' - ',
+    }
+    for k, v in mojibake.items():
+        text = text.replace(k, v)
+
     replacements = {
         '\u2022': '-',
         '\u2013': '-',

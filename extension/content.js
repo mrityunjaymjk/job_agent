@@ -1064,6 +1064,147 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
     });
   }
 
+  // Parse and format dates to match various ATS date input formats (MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, or YYYY)
+  function formatCandidateDate(dateStr, el) {
+    if (!dateStr) return "";
+    const cleanStr = String(dateStr).trim();
+    if (!cleanStr) return "";
+
+    const sig = el ? getElementSignature(el) : "";
+    const placeholder = (el?.getAttribute("placeholder") || "").toLowerCase();
+    const type = (el?.type || "").toLowerCase();
+    const isDatePicker =
+      type === "date" ||
+      placeholder.includes("mm/dd/yyyy") || placeholder.includes("dd/mm/yyyy") || placeholder.includes("yyyy-mm-dd") ||
+      sig.includes("calendar") || sig.includes("datepicker") || (el?.className || "").includes("datepicker") ||
+      (el?.nextElementSibling?.className || "").includes("calendar") || (el?.parentElement?.innerHTML || "").includes("calendar");
+
+    // Handle "Present" / "Current"
+    if (/^(present|current|now)$/i.test(cleanStr)) {
+      if (isDatePicker) {
+        const today = new Date();
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
+        const yyyy = String(today.getFullYear());
+        if (placeholder.includes("dd/mm/yyyy") || sig.includes("dd/mm/yyyy") || sig.includes("dd-mm-yyyy")) {
+          return `${dd}/${mm}/${yyyy}`;
+        }
+        if (type === "date" || placeholder.includes("yyyy-mm-dd")) {
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        return `${mm}/${dd}/${yyyy}`;
+      }
+      return "Present";
+    }
+
+    const monthMap = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+    };
+
+    let m = "01", d = "01", y = "2025";
+
+    // 1. Check MM/DD/YYYY or MM-DD-YYYY
+    const slashMatch = cleanStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (slashMatch) {
+      m = String(slashMatch[1]).padStart(2, "0");
+      d = String(slashMatch[2]).padStart(2, "0");
+      y = slashMatch[3];
+    } else {
+      // 2. Check "Nov 2025" or "August 2016"
+      const monYearMatch = cleanStr.match(/^([a-zA-Z]{3,9})\s+(\d{4})$/);
+      if (monYearMatch) {
+        const key = monYearMatch[1].toLowerCase().slice(0, 3);
+        m = monthMap[key] || "01";
+        d = "01";
+        y = monYearMatch[2];
+      } else {
+        // 3. Check year only "2025"
+        const yearMatch = cleanStr.match(/^(\d{4})$/);
+        if (yearMatch) {
+          y = yearMatch[1];
+          m = "01";
+          d = "01";
+        }
+      }
+    }
+
+    // Determine target format
+    if (sig.includes("qualification year") || sig.includes("passing year") || sig.includes("year of passing") || (sig.includes("year") && !sig.includes("date") && !placeholder.includes("mm"))) {
+      return y;
+    }
+    if (type === "date" || placeholder.includes("yyyy-mm-dd")) {
+      return `${y}-${m}-${d}`;
+    }
+    if (placeholder.includes("dd/mm/yyyy") || sig.includes("dd/mm/yyyy") || sig.includes("dd-mm-yyyy")) {
+      return `${d}/${m}/${y}`;
+    }
+    if (placeholder.includes("mm/dd/yyyy") || isDatePicker) {
+      return `${m}/${d}/${y}`;
+    }
+
+    if (sig.includes("date") || sig.includes("promotion")) {
+      return `${m}/${d}/${y}`;
+    }
+    return cleanStr;
+  }
+
+  // Identifies which form sub-section an element belongs to in multi-section enterprise portals
+  function getSectionContext(el) {
+    if (!el) return "";
+    let node = el;
+    // Walk up the DOM tree (up to 8 parent levels) and check siblings
+    for (let i = 0; i < 8 && node && node !== document.body; i++) {
+      let sibling = node;
+      while (sibling) {
+        const text = (
+          (sibling.getAttribute ? (sibling.getAttribute("id") || "") + " " + (sibling.getAttribute("class") || "") : "") + " " +
+          (sibling.innerText || sibling.textContent || "")
+        ).slice(0, 500).toLowerCase();
+
+        // Check second education BEFORE highest education (since "2nd highest education" contains "highest education")
+        if (text.includes("2nd highest") || text.includes("second highest") || text.includes("undergraduate") || text.includes("bachelor") || text.includes("graduation details")) {
+          return "second_education";
+        }
+        if (text.includes("highest education") || text.includes("highest qualification") || text.includes("post graduate")) {
+          return "highest_education";
+        }
+        if (text.includes("previous work") || text.includes("previous experience") || text.includes("previous employment") || text.includes("past work") || text.includes("past experience")) {
+          return "previous_experience";
+        }
+        if (text.includes("current work") || text.includes("current experience") || text.includes("current employment") || text.includes("present experience")) {
+          return "current_experience";
+        }
+        if (text.includes("permanent address")) {
+          return "permanent_address";
+        }
+        if (text.includes("current address") || text.includes("communication address")) {
+          return "current_address";
+        }
+        if (text.includes("diversity") || text.includes("disability") || text.includes("second career") || text.includes("specially abled")) {
+          return "diversity";
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      node = node.parentElement;
+    }
+
+    // Check preceding headings directly before element
+    let prev = el.previousElementSibling;
+    while (prev) {
+      const hText = (prev.innerText || prev.textContent || "").toLowerCase();
+      if (hText.includes("2nd highest") || hText.includes("second highest")) return "second_education";
+      if (hText.includes("highest education") || hText.includes("highest qualification")) return "highest_education";
+      if (hText.includes("previous work") || hText.includes("previous experience")) return "previous_experience";
+      if (hText.includes("current work") || hText.includes("current experience")) return "current_experience";
+      if (hText.includes("permanent address")) return "permanent_address";
+      if (hText.includes("current address")) return "current_address";
+      prev = prev.previousElementSibling;
+    }
+
+    return "";
+  }
+
   // ==========================================
   // 5. MASTER AUTOFILL & TAILORING EXECUTION
   // ==========================================
@@ -1158,14 +1299,24 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         const sig = getElementSignature(el);
         const directSig = ((el.name || "") + " " + (el.id || "") + " " + (el.placeholder || "") + " " + (el.getAttribute("aria-label") || "")).toLowerCase();
         const isTextarea = el.tagName.toLowerCase() === "textarea";
+        const section = getSectionContext(el);
 
-        // First Name
+        // Middle Name (if candidate has no middle name, fill "" so it does not get populated with full name)
         if (
+          !isTextarea &&
+          (sig.includes("middle name") || sig.includes("middlename") || sig.includes("middle_name") || directSig.includes("middle"))
+        ) {
+          const parts = (profile.name || "").trim().split(/\s+/);
+          const middle = parts.length > 2 ? parts.slice(1, -1).join(" ") : "";
+          if (setNativeValue(el, middle)) filledCount++;
+        }
+        // First Name
+        else if (
           !isTextarea &&
           (sig.includes("first name") || sig.includes("firstname") || sig.includes("given name") ||
            sig.includes("first_name") || sig.includes("given-name") || sig.includes("first-name") ||
            directSig.includes("firstname") || directSig.includes("first_name")) &&
-          !sig.includes("last")
+          !sig.includes("last") && !sig.includes("middle")
         ) {
           if (setNativeValue(el, profile.first_name || profile.name.split(" ")[0])) filledCount++;
         }
@@ -1174,7 +1325,8 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           !isTextarea &&
           (sig.includes("last name") || sig.includes("lastname") || sig.includes("family name") ||
            sig.includes("surname") || sig.includes("last_name") || sig.includes("family-name") ||
-           sig.includes("last-name") || directSig.includes("lastname") || directSig.includes("last_name"))
+           sig.includes("last-name") || directSig.includes("lastname") || directSig.includes("last_name")) &&
+          !sig.includes("middle")
         ) {
           const parts = profile.name.split(" ");
           const lastName = profile.last_name || (parts.length > 1 ? parts.slice(1).join(" ") : "");
@@ -1184,11 +1336,27 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         else if (
           !isTextarea &&
           (/\b(full\s*name|candidate\s*name|applicant\s*name|your\s*name)\b/i.test(sig) ||
-           (/\bname\b/i.test(sig) && !sig.includes("first") && !sig.includes("last") &&
+           (/\bname\b/i.test(sig) && !sig.includes("first") && !sig.includes("last") && !sig.includes("middle") &&
             !sig.includes("company") && !sig.includes("user") && !sig.includes("school") &&
-            !sig.includes("file") && !sig.includes("drop")))
+            !sig.includes("file") && !sig.includes("drop") && !sig.includes("degree") && !sig.includes("university") && !sig.includes("college")))
         ) {
           if (setNativeValue(el, profile.name)) filledCount++;
+        }
+        // Date of Birth (DOB)
+        else if (
+          !isTextarea &&
+          (sig.includes("date of birth") || sig.includes("birth date") || sig.includes("dob") || sig.includes("birthdate"))
+        ) {
+          const dobVal = formatCandidateDate(profile.dob || "08/15/1998", el);
+          if (setNativeValue(el, dobVal)) filledCount++;
+        }
+        // Date of Promotion
+        else if (
+          !isTextarea &&
+          (sig.includes("date of promotion") || sig.includes("promotion date") || sig.includes("promotion since"))
+        ) {
+          const promoVal = formatCandidateDate(profile.experience_start || "11/01/2025", el);
+          if (setNativeValue(el, promoVal)) filledCount++;
         }
         // Confirm Email (check before generic email)
         else if (
@@ -1198,6 +1366,13 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
            sig.includes("re-enter email") || sig.includes("repeat email") || sig.includes("verify email"))
         ) {
           if (setNativeValue(el, profile.email)) filledCount++;
+        }
+        // HR Email / Reference Email
+        else if (
+          !isTextarea &&
+          (sig.includes("hr email") || sig.includes("reference email"))
+        ) {
+          if (setNativeValue(el, profile.email || "mrityunjayk456@gmail.com")) filledCount++;
         }
         // Email
         else if (!isTextarea && (el.type === "email" || sig.includes("email") || sig.includes("e-mail"))) {
@@ -1212,10 +1387,160 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           }
           if (setNativeValue(el, phoneToFill)) filledCount++;
         }
-        // City (check before general location/address)
-        else if (!isTextarea && (sig.includes("city") || sig.includes("current city")) && !sig.includes("state") && !sig.includes("country")) {
-          const loc = profile.city || (profile.location ? profile.location.split(",")[0].trim() : "Pune");
-          if (setNativeValue(el, loc)) filledCount++;
+        // Notice Period in Days (e.g. "* Notice Period in Days")
+        else if (
+          !isTextarea &&
+          (sig.includes("notice period in days") || sig.includes("notice period (in days)") || (sig.includes("notice period") && sig.includes("day")))
+        ) {
+          if (setNativeValue(el, profile.notice_period_days || "15")) filledCount++;
+        }
+        // Notice Period generic
+        else if (
+          !isTextarea &&
+          (sig.includes("notice period") || sig.includes("availability"))
+        ) {
+          if (setNativeValue(el, profile.notice_period || "Immediate (2 weeks)")) filledCount++;
+        }
+        // Number of Attempts (e.g. '* "Number of Attempts"')
+        else if (
+          !isTextarea &&
+          (sig.includes("number of attempts") || sig.includes("no of attempts") || sig.includes("attempts"))
+        ) {
+          if (setNativeValue(el, profile.attempts || "1")) filledCount++;
+        }
+        // Department
+        else if (
+          !isTextarea &&
+          sig.includes("department") && !sig.includes("university") && !sig.includes("college")
+        ) {
+          if (setNativeValue(el, profile.department || "Engineering")) filledCount++;
+        }
+        // Reason for Leaving
+        else if (
+          sig.includes("reason for leaving") || sig.includes("reason of leaving")
+        ) {
+          if (setNativeValue(el, profile.reason_for_leaving || "Career Growth & Learning Opportunities")) filledCount++;
+        }
+        // Previous Company Name
+        else if (
+          !isTextarea &&
+          ((section === "previous_experience" && (sig.includes("company") || sig.includes("employer") || sig.includes("organization"))) ||
+           sig.includes("previous company") || sig.includes("past company"))
+        ) {
+          if (setNativeValue(el, profile.previous_company || "Tubhyam IT Solution")) filledCount++;
+        }
+        // Current Company Name
+        else if (
+          !isTextarea &&
+          (sig.includes("current company") || (section === "current_experience" && (sig.includes("company") || sig.includes("employer"))))
+        ) {
+          if (setNativeValue(el, profile.current_company || "Digitalllydrunk Pvt Ltd")) filledCount++;
+        }
+        // Previous Designation / Role
+        else if (
+          !isTextarea &&
+          ((section === "previous_experience" && (sig.includes("designation") || sig.includes("title") || sig.includes("role"))) ||
+           sig.includes("previous designation") || sig.includes("past designation"))
+        ) {
+          if (setNativeValue(el, profile.previous_title || "Software Developer (Intern)")) filledCount++;
+        }
+        // Current Designation / Role
+        else if (
+          !isTextarea &&
+          (sig.includes("current designation") || (section === "current_experience" && (sig.includes("designation") || sig.includes("title") || sig.includes("role"))) ||
+           (/\bdesignation\b/i.test(sig) && !sig.includes("previous") && !sig.includes("past")))
+        ) {
+          if (setNativeValue(el, profile.current_title || "Backend Developer")) filledCount++;
+        }
+        // Start Date (Section-aware)
+        else if (
+          !isTextarea &&
+          (sig.includes("start date") || sig.includes("from date") || sig.includes("joining date") || sig.includes("start_date") || sig.includes("start month"))
+        ) {
+          let dateStr = profile.experience_start || "11/01/2025";
+          if (section === "highest_education") {
+            dateStr = "02/01/2025";
+          } else if (section === "second_education") {
+            dateStr = profile.undergrad_start || "08/01/2016";
+          } else if (section === "previous_experience") {
+            dateStr = profile.previous_exp_start || "08/01/2025";
+          }
+          if (setNativeValue(el, formatCandidateDate(dateStr, el))) filledCount++;
+        }
+        // End Date (Section-aware)
+        else if (
+          !isTextarea &&
+          (sig.includes("end date") || sig.includes("to date") || sig.includes("relieving date") || sig.includes("end_date") || sig.includes("completion date") || sig.includes("end month"))
+        ) {
+          let dateStr = profile.experience_end || "Present";
+          if (section === "highest_education") {
+            dateStr = "08/01/2025";
+          } else if (section === "second_education") {
+            dateStr = profile.undergrad_end || "06/01/2020";
+          } else if (section === "previous_experience") {
+            dateStr = profile.previous_exp_end || "11/01/2025";
+          }
+          if (setNativeValue(el, formatCandidateDate(dateStr, el))) filledCount++;
+        }
+        // Qualification Year (MUST be checked before Degree/Qualification)
+        else if (
+          !isTextarea &&
+          (sig.includes("qualification year") || sig.includes("passing year") || sig.includes("year of passing") ||
+           sig.includes("grad year") || sig.includes("graduation year") || sig.includes("completion year"))
+        ) {
+          const yr = section === "second_education" ? (profile.undergrad_grad_year || "2020") : (profile.grad_year || "2025");
+          if (setNativeValue(el, formatCandidateDate(yr, el))) filledCount++;
+        }
+        // Course / Degree Name (Text input fallback)
+        else if (
+          !isTextarea &&
+          (sig.includes("course") || sig.includes("degree") || sig.includes("qualification")) &&
+          !sig.includes("year")
+        ) {
+          const deg = section === "second_education"
+            ? (profile.undergrad_degree || "B.Tech - Mechanical Engineering")
+            : (profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)");
+          if (setNativeValue(el, deg)) filledCount++;
+        }
+        // Specialization / Major (Text input fallback)
+        else if (
+          !isTextarea &&
+          (sig.includes("specialization") || sig.includes("major") || sig.includes("stream") || sig.includes("branch"))
+        ) {
+          const spec = section === "second_education"
+            ? (profile.undergrad_major || "Mechanical Engineering")
+            : (profile.major || "Advanced Computing / Computer Science");
+          if (setNativeValue(el, spec)) filledCount++;
+        }
+        // College / Institute Name (Text input fallback)
+        else if (
+          !isTextarea &&
+          (sig.includes("college") || sig.includes("institute") || sig.includes("school"))
+        ) {
+          const col = section === "second_education"
+            ? (profile.undergrad_school || "MIT Academy of Engineering")
+            : (profile.school || "Sunbeam Institute of Information Technology");
+          if (setNativeValue(el, col)) filledCount++;
+        }
+        // University Name (Text input fallback)
+        else if (
+          !isTextarea &&
+          sig.includes("university")
+        ) {
+          const uni = section === "second_education"
+            ? (profile.undergrad_university || "Savitribai Phule Pune University")
+            : (profile.university || "CDAC");
+          if (setNativeValue(el, uni)) filledCount++;
+        }
+        // "If Other, mention the skillset below"
+        else if (
+          sig.includes("mention the skillset") || sig.includes("if other, mention") ||
+          (sig.includes("other") && sig.includes("skill"))
+        ) {
+          const skillsToMention = section === "previous_experience"
+            ? (profile.previous_skills || "Java, Spring Boot, MySQL, REST APIs, Stripe")
+            : (Array.isArray(profile.skills) ? profile.skills.slice(0, 5).join(", ") : "Java, Spring Boot, MySQL, REST APIs, React");
+          if (setNativeValue(el, skillsToMention)) filledCount++;
         }
         // Technical Skills / Skill Sets (e.g. "Skill Sets *", "Technical Skills", "Technologies")
         else if (
@@ -1228,23 +1553,38 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             : (Array.isArray(profile.skills) ? profile.skills.join(", ") : (profile.skills || "Java, Spring Boot, MySQL, REST APIs, React"));
           if (setNativeValue(el, skillsVal)) filledCount++;
         }
-        // Current Profile / Short Description / Summary
-        else if (
-          sig.includes("current profile") || sig.includes("short description") ||
-          sig.includes("about your") || sig.includes("about yourself") ||
-          sig.includes("profile description") || sig.includes("bio")
-        ) {
-          const summaryVal = tailoredData?.summary || profile.experience || profile.resume_raw_text;
-          if (setNativeValue(el, summaryVal)) filledCount++;
+        // City (check before general location/address)
+        else if (!isTextarea && (sig.includes("city") || sig.includes("current city") || sig.includes("permanent city")) && !sig.includes("state") && !sig.includes("country")) {
+          const loc = profile.city || (profile.location ? profile.location.split(",")[0].trim() : "Pune");
+          if (setNativeValue(el, loc)) filledCount++;
         }
-        // Location / Address
+        // Zip / Postal Code
+        else if (!isTextarea && (sig.includes("zip") || sig.includes("postal") || sig.includes("pincode") || sig.includes("pin code"))) {
+          if (setNativeValue(el, profile.zip || "411015")) filledCount++;
+        }
+        // State / Province / Region
+        else if (!isTextarea && (sig.includes("state") || sig.includes("province") || sig.includes("region"))) {
+          if (setNativeValue(el, profile.state || "Maharashtra")) filledCount++;
+        }
+        // Address Line 1 / Address Line 2
+        else if (!isTextarea && (sig.includes("address line 1") || sig.includes("address 1") || sig.includes("address_1") || sig.includes("permanent address line 1"))) {
+          if (setNativeValue(el, profile.address_line1 || "Pune, India")) filledCount++;
+        }
+        else if (!isTextarea && (sig.includes("address line 2") || sig.includes("address 2") || sig.includes("address_2") || sig.includes("permanent address line 2"))) {
+          if (setNativeValue(el, profile.address_line2 || "Pune, India")) filledCount++;
+        }
+        // General Address / Location
         else if (sig.includes("location") || sig.includes("current location") || sig.includes("address")) {
-          const loc = profile.location || profile.city;
+          const loc = profile.location || profile.city || "Pune, India";
           if (setNativeValue(el, loc)) filledCount++;
         }
         // Country
         else if (sig.includes("country") && !sig.includes("code")) {
           if (setNativeValue(el, profile.country || "India")) filledCount++;
+        }
+        // Current Working Location / Past Work Location
+        else if (sig.includes("working location") || sig.includes("work location")) {
+          if (setNativeValue(el, profile.location || profile.city || "Pune, India")) filledCount++;
         }
         // LinkedIn
         else if (sig.includes("linkedin")) {
@@ -1266,10 +1606,6 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
           const cleanYears = profile.years_exp.match(/\d+/) ? profile.years_exp.match(/\d+/)[0] : "1";
           if (setNativeValue(el, cleanYears)) filledCount++;
         }
-        // Notice Period
-        else if (sig.includes("notice period") || sig.includes("notice")) {
-          if (setNativeValue(el, profile.notice_period || "Immediate (2 weeks)")) filledCount++;
-        }
         // Salary / Compensation
         else if (sig.includes("desired salary") || sig.includes("expected salary") || sig.includes("compensation")) {
           const cleanSalary = profile.expected_salary.replace(/[^\d]/g, "") || "10000";
@@ -1286,43 +1622,14 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
             : (profile.resume_raw_text || profile.experience);
           if (setNativeValue(el, textToFill)) filledCount++;
         }
-        // Current Employer / Company
+        // Current Profile / Short Description / Summary
         else if (
-          (sig.includes("current company") || sig.includes("most recent company") || sig.includes("current employer") || sig.includes("employer") || sig.includes("organization")) &&
-          !sig.includes("school")
+          sig.includes("current profile") || sig.includes("short description") ||
+          sig.includes("about your") || sig.includes("about yourself") ||
+          sig.includes("profile description") || sig.includes("bio")
         ) {
-          if (setNativeValue(el, profile.current_company || "Digitalllydrunk Pvt Ltd")) filledCount++;
-        }
-        // Current Job Title
-        else if (
-          sig.includes("job title") || sig.includes("current title") || sig.includes("designation") ||
-          sig.includes("position title") || sig.includes("current role")
-        ) {
-          if (setNativeValue(el, profile.current_title || "Backend Developer")) filledCount++;
-        }
-        // Employment Start Date
-        else if (sig.includes("start date") || sig.includes("from date") || sig.includes("start month") || sig.includes("start year")) {
-          if (setNativeValue(el, profile.experience_start || "Nov 2025")) filledCount++;
-        }
-        // Employment End Date
-        else if (sig.includes("end date") || sig.includes("to date") || sig.includes("end month") || sig.includes("end year")) {
-          if (setNativeValue(el, profile.experience_end || "Present")) filledCount++;
-        }
-        // Degree / Qualification
-        else if (sig.includes("degree") || sig.includes("qualification") || sig.includes("highest education") || sig.includes("education level")) {
-          if (setNativeValue(el, profile.degree || "Post Graduate Diploma in Advanced Computing (PG-DAC)")) filledCount++;
-        }
-        // Major / Field of Study
-        else if (sig.includes("major") || sig.includes("field of study") || sig.includes("discipline")) {
-          if (setNativeValue(el, profile.major || "Advanced Computing / Computer Science")) filledCount++;
-        }
-        // College / School / University
-        else if (sig.includes("school") || sig.includes("university") || sig.includes("college") || sig.includes("institution")) {
-          if (setNativeValue(el, profile.school || "Sunbeam Institute of Information Technology")) filledCount++;
-        }
-        // Graduation Year
-        else if (sig.includes("grad year") || sig.includes("graduation year") || sig.includes("completion year") || sig.includes("year graduated")) {
-          if (setNativeValue(el, profile.grad_year || "2025")) filledCount++;
+          const summaryVal = tailoredData?.summary || profile.experience || profile.resume_raw_text;
+          if (setNativeValue(el, summaryVal)) filledCount++;
         }
         // Cover Letter & Open-Ended Textarea
         else if (isTextarea || el.clientHeight > 50) {
@@ -1387,37 +1694,179 @@ Return ONLY a valid JSON object (no markdown formatting, no backticks) with this
         }
       }
 
-      // 5. Select Dropdowns (Country, Experience, Gender, etc.) across light DOM and open Shadow DOM
+      // 5. Select Dropdowns (Country, Experience, Gender, Education, Skillset, Remuneration, etc.)
       const selects = querySelectorAllDeep("select");
       for (const sel of selects) {
         const sig = getElementSignature(sel);
-        let targetText = null;
+        const section = getSectionContext(sel);
+        let targets = [];
 
-        if (sig.includes("country")) {
-          targetText = profile.country || "India";
-        } else if (sig.includes("experience") || sig.includes("years")) {
-          targetText = "1"; // Matches "1 Years" or "1 Years +" or "Fresher"
-        } else if (sig.includes("gender")) {
-          targetText = profile.eeo_gender || "Prefer not to disclose";
-        } else if (sig.includes("disability")) {
-          targetText = profile.eeo_disability || "No";
-        } else if (sig.includes("veteran")) {
-          targetText = profile.eeo_veteran || "I am not a protected veteran";
-        } else if (sig.includes("how did you hear") || sig.includes("source")) {
-          targetText = "LinkedIn";
+        // 1. Fresher ("* Are you a fresher ?")
+        if (sig.includes("fresher")) {
+          targets = ["no", "experienced"];
+        }
+        // 2. Experience Type
+        else if (sig.includes("experience type") || sig.includes("employment type")) {
+          targets = section === "previous_experience"
+            ? ["employment", "internship", "full time", "full-time"]
+            : ["employment", "full time", "full-time", "permanent"];
+        }
+        // 3. SkillSet (Current & Previous)
+        else if (sig.includes("skillset") || (sig.includes("skill") && (sig.includes("current") || sig.includes("previous") || sig.includes("primary")))) {
+          targets = ["java", "information technology", "software development", "it", "other", "others"];
+        }
+        // 4. Experience Category
+        else if (sig.includes("experience category") || sig.includes("job category")) {
+          targets = ["full time", "permanent", "it", "engineering", "software", "regular"];
+        }
+        // 5. Fixed Remuneration per Annum
+        else if (sig.includes("fixed remuneration") || sig.includes("fixed salary") || sig.includes("fixed compensation")) {
+          targets = ["3 - 5", "3-5", "3 to 6", "5 - 7", "lakh", "inr"];
+        }
+        // 6. Variable Remuneration per Annum
+        else if (sig.includes("variable remuneration") || sig.includes("variable salary") || sig.includes("bonus")) {
+          targets = ["0", "na", "none", "zero", "not applicable"];
+        }
+        // 7. Diversity / Disability / Neurodiversity / Specially Abled / Second Career
+        else if (
+          sig.includes("diversity") || sig.includes("disability") || sig.includes("second career") ||
+          sig.includes("specially abled") || sig.includes("neurodiversity")
+        ) {
+          targets = ["no", "none", "na", "not applicable", "prefer not to disclose", "prefer not to say"];
+        }
+        // 8. Gender
+        else if (sig.includes("gender")) {
+          targets = [profile.gender?.toLowerCase() || "male"];
+        }
+        // 9. Marital Status
+        else if (sig.includes("marital")) {
+          targets = [profile.marital_status?.toLowerCase() || "single", "unmarried", "never married"];
+        }
+        // 10. Country (Residence or Education)
+        else if (sig.includes("country")) {
+          targets = [profile.country?.toLowerCase() || "india"];
+        }
+        // 11. State / Province / Region
+        else if (sig.includes("state") || sig.includes("province") || sig.includes("region")) {
+          targets = [profile.state?.toLowerCase() || "maharashtra"];
+        }
+        // 12. Course Category / Course Type (must check BEFORE generic course name)
+        else if (sig.includes("course category") || sig.includes("course type")) {
+          targets = ["technical", "engineering", "it", "full time", "professional", "regular"];
+        }
+        // 13. Course / Degree Name
+        else if (sig.includes("degree") || (sig.includes("course") && !sig.includes("category") && !sig.includes("type"))) {
+          targets = section === "second_education"
+            ? ["b.tech", "bachelor of technology", "b.e", "bachelor of engineering", "engineering", "mechanical", "graduate", "other", "others"]
+            : ["post graduate diploma in advanced computing", "pg-dac", "post graduate diploma", "pg diploma", "diploma in advanced computing", "computer science", "information technology", "post graduate", "other", "others"];
+        }
+        // 14. Qualification
+        else if (sig.includes("qualification") && !sig.includes("year")) {
+          targets = section === "second_education"
+            ? ["graduation", "graduate", "bachelor", "under graduate", "degree", "other", "others"]
+            : ["post graduate", "pg diploma", "diploma", "post graduation", "master", "graduate", "other", "others"];
+        }
+        // 15. Specialization
+        else if (sig.includes("specialization") || sig.includes("major") || sig.includes("branch") || sig.includes("stream")) {
+          targets = section === "second_education"
+            ? ["mechanical engineering", "mechanical", "engineering", "other", "others"]
+            : ["advanced computing", "computer science", "information technology", "computer", "it", "other", "others"];
+        }
+        // 16. Education Type
+        else if (sig.includes("education type")) {
+          targets = ["full time", "regular", "full-time"];
+        }
+        // 17. Education Grade
+        else if (sig.includes("grade") || sig.includes("division") || sig.includes("class")) {
+          targets = ["first class with distinction", "distinction", "first class", "first", "grade a", "a", "pass"];
+        }
+        // 18. College / Institute Name
+        else if (sig.includes("college") || sig.includes("institute") || sig.includes("school")) {
+          targets = section === "second_education"
+            ? ["mit academy of engineering", "mit", "maharashtra institute", "other", "others"]
+            : ["sunbeam institute of information technology", "sunbeam", "cdac", "c-dac", "other", "others"];
+        }
+        // 19. Type of Establishment
+        else if (sig.includes("establishment") || sig.includes("institute type")) {
+          targets = ["autonomous", "private", "university", "affiliated", "government"];
+        }
+        // 20. University Name
+        else if (sig.includes("university")) {
+          targets = section === "second_education"
+            ? ["savitribai phule pune university", "pune university", "university of pune", "sppu", "other", "others"]
+            : ["cdac", "c-dac", "centre for development of advanced computing", "autonomous", "other", "others"];
+        }
+        // 21. Experience / Years of Experience
+        else if (sig.includes("experience") || sig.includes("years")) {
+          targets = ["1", "1+", "1 year", "1 years", "fresher"];
+        }
+        // 22. Veteran Status
+        else if (sig.includes("veteran")) {
+          targets = [profile.eeo_veteran?.toLowerCase() || "i am not a protected veteran", "not a veteran"];
+        }
+        // 23. Source / How did you hear
+        else if (sig.includes("how did you hear") || sig.includes("source")) {
+          targets = ["linkedin", "other", "company website"];
         }
 
-        if (targetText) {
-          for (let i = 0; i < sel.options.length; i++) {
-            const opt = sel.options[i];
-            if (opt.text.toLowerCase().includes(targetText.toLowerCase()) || opt.value.toLowerCase().includes(targetText.toLowerCase())) {
-              if (sel.selectedIndex !== i) {
-                sel.selectedIndex = i;
+        let selected = false;
+        if (targets.length > 0) {
+          // Pass 1: Try to match preferred targets in order
+          for (const target of targets) {
+            for (let i = 0; i < sel.options.length; i++) {
+              const opt = sel.options[i];
+              const optText = (opt.text || "").toLowerCase().trim();
+              const optVal = (opt.value || "").toLowerCase().trim();
+
+              // Skip placeholder options (e.g. "No Selection", "-- Select --", "", "Choose")
+              const isPlaceholder = (optVal === "" && i === 0) || optText.startsWith("select") || optText.startsWith("no select") || optText.startsWith("--") || optText.startsWith("choose");
+              if (isPlaceholder) continue;
+
+              // If target is "no", require exact word match (avoid matching "no selection" or "neurodiversity")
+              let isMatch = false;
+              if (target === "no") {
+                isMatch = optText === "no" || optVal === "no" || (/\bno\b/i.test(optText) && !optText.includes("select"));
+              } else {
+                isMatch = optText.includes(target) || optVal.includes(target);
+              }
+
+              if (isMatch) {
+                if (sel.selectedIndex !== i) {
+                  sel.selectedIndex = i;
+                  sel.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+                  sel.classList.add("jobagent-highlight");
+                  filledCount++;
+                }
+                selected = true;
+                break;
+              }
+            }
+            if (selected) break;
+          }
+
+          // Pass 2: If required dropdown still at "No Selection" or 0, fallback to "Other" or "Others"
+          if (!selected && sel.options.length > 1) {
+            const currentText = (sel.options[sel.selectedIndex]?.text || "").toLowerCase();
+            if (currentText.includes("select") || currentText === "" || sel.selectedIndex === 0) {
+              for (let i = 0; i < sel.options.length; i++) {
+                const optText = (sel.options[i].text || "").toLowerCase();
+                if (optText.includes("other") || optText.includes("na") || optText.includes("not applicable")) {
+                  sel.selectedIndex = i;
+                  sel.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+                  sel.classList.add("jobagent-highlight");
+                  filledCount++;
+                  selected = true;
+                  break;
+                }
+              }
+              // If still not selected and it's remuneration, choose option index 1
+              if (!selected && (sig.includes("remuneration") || sig.includes("salary")) && sel.options.length > 1) {
+                sel.selectedIndex = 1;
                 sel.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
                 sel.classList.add("jobagent-highlight");
                 filledCount++;
+                selected = true;
               }
-              break;
             }
           }
         }
